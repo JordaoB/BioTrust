@@ -7,6 +7,10 @@ Interface principal para simulação de compras com segurança biométrica.
 import sys
 from datetime import datetime
 from payment_system import PaymentSystem
+from colorama import init, Fore, Style, Back
+
+# Initialize colorama for Windows
+init(autoreset=True)
 
 
 class BioTrustApp:
@@ -19,13 +23,13 @@ class BioTrustApp:
     def show_header(self):
         """Mostra o cabeçalho da aplicação."""
         print("\n" + "="*70)
-        print(" "*20 + "🔐 BioTrust Payment System")
+        print(Fore.CYAN + Style.BRIGHT + " "*20 + "🔐 BioTrust Payment System")
         print(" "*15 + "Secure Biometric Authentication")
         print("="*70)
     
     def select_user(self):
         """Permite selecionar um utilizador."""
-        print("\n📋 Select User Profile:")
+        print("\n" + Fore.YELLOW + "📋 Select User Profile:")
         print("-" * 70)
         
         users = {
@@ -36,16 +40,16 @@ class BioTrustApp:
         }
         
         for key, (user_id, desc) in users.items():
-            print(f"  {key}. {desc}")
+            print(f"  {Fore.CYAN}{key}. {Fore.WHITE}{desc}")
         
-        choice = input("\nEnter user number (1-4): ").strip()
+        choice = input("\n" + Fore.GREEN + "Enter user number (1-4): ").strip()
         
         if choice in users:
             self.current_user = users[choice][0]
-            print(f"✓ Selected: {users[choice][1]}")
+            print(Fore.GREEN + f"✓ Selected: {users[choice][1]}")
             return True
         else:
-            print("✗ Invalid selection")
+            print(Fore.RED + "✗ Invalid selection")
             return False
     
     def create_custom_transaction(self):
@@ -78,7 +82,7 @@ class BioTrustApp:
     
     def show_scenario_menu(self):
         """Mostra menu com cenários pré-definidos."""
-        print("\n📌 Quick Scenarios:")
+        print("\n" + Fore.YELLOW + "📌 Quick Scenarios:")
         print("-" * 70)
         
         scenarios = {
@@ -86,45 +90,58 @@ class BioTrustApp:
                 "name": "☕ Morning Coffee",
                 "amount": 2.50,
                 "location": "lisboa",  # lowercase para match JSON
-                "type": "pos"
+                "type": "pos",
+                "risk": "LOW"
             },
             "2": {
                 "name": "🍕 Lunch",
                 "amount": 12.50,
                 "location": "lisboa",
-                "type": "pos"
+                "type": "pos",
+                "risk": "LOW"
             },
             "3": {
                 "name": "💻 Electronics (Medium Risk)",
                 "amount": 450.00,
                 "location": "porto",
-                "type": "online"
+                "type": "online",
+                "risk": "MEDIUM"
             },
             "4": {
                 "name": "✈️ Flight Ticket (High Risk)",
                 "amount": 850.00,
                 "location": "madrid",
-                "type": "online"
+                "type": "online",
+                "risk": "HIGH"
             },
             "5": {
                 "name": "💎 Luxury Item (Very High Risk)",
                 "amount": 2500.00,
                 "location": "paris",
-                "type": "online"
+                "type": "online",
+                "risk": "VERYHIGH"
             },
             "6": {
                 "name": "🌙 Late Night Purchase (Suspicious)",
                 "amount": 300.00,
                 "location": "barcelona",  # não está no JSON, vai usar fallback
-                "type": "online"
+                "type": "online",
+                "risk": "MEDIUM"
             }
         }
         
         for key, scenario in scenarios.items():
-            print(f"  {key}. {scenario['name']}")
-            print(f"      €{scenario['amount']:.2f} | {scenario['location'].title()} | {scenario['type']}")
+            risk_color = {
+                "LOW": Fore.GREEN,
+                "MEDIUM": Fore.YELLOW,
+                "HIGH": Fore.RED,
+                "VERYHIGH": Fore.MAGENTA
+            }.get(scenario['risk'], Fore.WHITE)
+            
+            print(f"  {Fore.CYAN}{key}. {Fore.WHITE}{scenario['name']}")
+            print(f"      {Fore.GREEN}€{scenario['amount']:.2f} {Fore.WHITE}| {Fore.BLUE}{scenario['location'].title()} {Fore.WHITE}| {risk_color}{scenario['type']}")
         
-        print("  7. Custom Transaction")
+        print(f"  {Fore.CYAN}7. {Fore.WHITE}Custom Transaction")
         
         return scenarios
     
@@ -140,10 +157,10 @@ class BioTrustApp:
         while True:
             scenarios = self.show_scenario_menu()
             
-            choice = input("\nSelect scenario (1-7) or 'q' to quit: ").strip().lower()
+            choice = input("\n" + Fore.GREEN + "Select scenario (1-7) or 'q' to quit: ").strip().lower()
             
             if choice == 'q':
-                print("\n👋 Thank you for using BioTrust!")
+                print("\n" + Fore.CYAN + "👋 Thank you for using BioTrust!")
                 break
             
             transaction_data = None
@@ -156,26 +173,30 @@ class BioTrustApp:
                     "type": scenario['type'],
                     "timestamp": datetime.now().isoformat()
                 }
-                print(f"\n✓ Selected: {scenario['name']}")
+                print(Fore.GREEN + f"\n✓ Selected: {scenario['name']}")
             elif choice == '7':
                 transaction_data = self.create_custom_transaction()
             
             if transaction_data:
                 # Processar pagamento
-                print("\nProcessing payment...")
+                print(Fore.CYAN + "\nProcessing payment...")
                 result = self.payment_system.process_payment(
                     self.current_user, 
                     transaction_data
                 )
                 
+                # Show statistics after transaction
+                print("\n" + Fore.YELLOW + Style.BRIGHT + "📊 Session Statistics:")
+                self.payment_system.logger.print_statistics()
+                
                 # Aguardar antes de continuar
-                input("\n\nPress ENTER to continue...")
+                input("\n\n" + Fore.WHITE + "Press ENTER to continue...")
             else:
-                print("✗ Invalid selection")
+                print(Fore.RED + "✗ Invalid selection")
         
         # Salvar log ao sair
         self.payment_system.save_transaction_log("transaction_log.json")
-        print("\n✓ Session completed. Transaction log saved.")
+        print("\n" + Fore.GREEN + "✓ Session completed. Transaction log saved.")
 
 
 def main():

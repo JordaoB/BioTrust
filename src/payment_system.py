@@ -12,6 +12,8 @@ import json
 from datetime import datetime
 from risk_engine import RiskEngine
 from liveness_detector import LivenessDetector
+from passive_liveness import PassiveLivenessDetector
+from transaction_logger import TransactionLogger
 
 
 class PaymentSystem:
@@ -23,7 +25,9 @@ class PaymentSystem:
         """Inicializa o sistema de pagamentos."""
         self.risk_engine = RiskEngine()
         self.liveness_detector = None  # Criado sob demanda
-        self.transaction_log = []
+        self.passive_detector = None  # Criado sob demanda
+        self.transaction_log = []  # Legacy - mantido para compatibilidade
+        self.logger = TransactionLogger()  # Novo sistema de logging
         
         # Carregar perfis de utilizadores e localizações
         with open('user_profiles.json', 'r', encoding='utf-8') as f:
@@ -31,7 +35,7 @@ class PaymentSystem:
             self.users = data['users']
             self.locations = data['locations']
         
-    def process_payment(self, user_id, transaction_data, enable_liveness=True):
+    def process_payment(self, user_id, transaction_data, enable_liveness=True, liveness_mode="active"):
         """
         Processa um pagamento completo com todas as verificações de segurança.
         
@@ -39,6 +43,7 @@ class PaymentSystem:
             user_id: ID do utilizador
             transaction_data: Dict com {amount, location, type, timestamp}
             enable_liveness: Se True, faz liveness detection quando necessário
+            liveness_mode: Tipo de liveness - "active", "passive", ou "multi"
             
         Returns:
             dict com resultado completo:
@@ -138,44 +143,112 @@ class PaymentSystem:
                 result['approved'] = False
             else:
                 # FASE 3: Liveness Detection
-                print("\n💓 PHASE 2: Liveness Detection")
+                print(f"\n💓 PHASE 2: Liveness Detection (Mode: {liveness_mode.upper()})")
                 print("-" * 70)
-                print("Starting biometric verification...")
-                print("Please follow the on-screen instructions:\n")
-                print("  1. Blink your eyes 3 times")
-                print("  2. Turn your head LEFT and return to center")
-                print("  3. Turn your head RIGHT and return to center\n")
                 
-                print("⏳ Opening camera window... (check if it opens on top)")
-                print("   If you don't see it, check your taskbar!\n")
+                liveness_passed = False
+                combined_result = {}
                 
-                # Criar detector (apenas quando necessário)
-                if self.liveness_detector is None:
-                    self.liveness_detector = LivenessDetector()
+                # ACTIVE LIVENESS (with integrated passive)
+                if liveness_mode in ["active", "multi"]:
+                    print("🎭 Starting ACTIVE Liveness Detection...")
+                    if liveness_mode == "active":
+                        print("🫀 Passive liveness (rPPG) running in parallel...")
+                    print("Please follow the on-screen instructions:")
+                    print("  1. Blink your eyes 3 times")
+                    print("  2. Turn your head LEFT and return to center")
+                    print("  3. Turn your head RIGHT and return to center\n")
+                    
+                    # Criar detector (apenas quando necessário)
+                    if self.liveness_detector is None:
+                        self.liveness_detector = LivenessDetector()
+                    
+                    # Executar verificação (enable_passive=True for active mode, False for multi)
+                    enable_passive_parallel = (liveness_mode == "active")
+                    active_result = self.liveness_detector.verify(timeout_seconds=90, enable_passive=enable_passive_parallel)
+                    combined_result['active'] = active_result
+                    
+                    print("\n" + "-" * 70)
+                    print("Active Liveness Result:")
+                    print(f"  Status: {'✓ PASSED' if active_result['success'] else '✗ FAILED'}")
+                    print(f"  Message: {active_result['message']}")
+                    print(f"  Blinks: {active_result['blinks_detected']}")
+                    print(f"  Movements: {', '.join(active_result['head_movements']) if active_result['head_movements'] else 'None'}")
+                    
+                    # Show passive results if available
+                    if 'heart_rate' in active_result:
+                        print(f"  Heart Rate: {active_result['heart_rate']:.1f} BPM")
+                        print(f"  HR Confidence: {active_result['heart_rate_confidence']:.1%}")
+                        print(f"  Passive: {'✓ PASS' if active_result.get('passive_liveness', False) else '✗ FAIL'}")
+                    
+                    if liveness_mode == "active":
+                        liveness_passed = active_result['success']
                 
-                # Executar verificação
-                liveness_result = self.liveness_detector.verify(timeout_seconds=90)
+                # PASSIVE LIVENESS (rPPG)
+                if liveness_mode in ["passive", "multi"]:
+                    print("\n🫀 Starting PASSIVE Liveness Detection (rPPG)...")
+                    print("Please stay still and look at the camera.\n")
+                    
+                    # Criar detector passivo
+                    if self.passive_detector is None:
+                        self.passive_detector = PassiveLivenessDetector()
+                    
+                    # Executar verificação
+                    passive_result = self.passive_detector.verify(show_visualization=True)
+                    combined_result['passive'] = passive_result
+                    
+                    print("\n" + "-" * 70)
+                    print("Passive Liveness Result:")
+                    print(f"  Status: {'✓ LIVE PERSON' if passive_result['is_live'] else '✗ SPOOF DETECTED'}")
+                    print(f"  Heart Rate: {passive_result['heart_rate']:.1f} BPM")
+                    print(f"  Confidence: {passive_result['confidence']:.2%}")
+                    
+                    if liveness_mode == "passive":
+                        liveness_passed = passive_result['is_live']
+                
+                # MULTI-FACTOR: Ambos devem passar
+                if liveness_mode == "multi":
+                    active_ok = combined_result.get('active', {}).get('success', False)
+                    passive_ok = combined_result.get('passive', {}).get('is_live', False)
+                    liveness_passed = active_ok and passive_ok
+                    
+                    print("\n" + "-" * 70)
+                    print("Multi-Factor Liveness:")
+                    print(f"  Active Liveness: {'✓' if active_ok else '✗'}")
+                    print(f"  Passive Liveness: {'✓' if passive_ok else '✗'}")
+                    print(f"  Combined Result: {'✓ PASSED' if liveness_passed else '✗ FAILED'}")
                 
                 result['liveness_performed'] = True
-                result['liveness_result'] = liveness_result
-                
-                print("\n" + "-" * 70)
-                print("Liveness Detection Result:")
-                print(f"  Status: {'✓ PASSED' if liveness_result['success'] else '✗ FAILED'}")
-                print(f"  Message: {liveness_result['message']}")
-                print(f"  Blinks: {liveness_result['blinks_detected']}")
-                print(f"  Movements: {', '.join(liveness_result['head_movements']) if liveness_result['head_movements'] else 'None'}")
+                result['liveness_result'] = combined_result
+                result['liveness_mode'] = liveness_mode
                 
                 # Decisão final
-                if liveness_result['success']:
+                if liveness_passed:
                     print("\n✅ FINAL DECISION: APPROVED (Liveness Confirmed)")
                     result['approved'] = True
                 else:
                     print("\n❌ FINAL DECISION: REJECTED (Liveness Failed)")
                     result['approved'] = False
         
-        # Salvar no log
+        # Salvar no log (legacy)
         self.transaction_log.append(result)
+        
+        # Salvar no novo sistema de logging persistente
+        log_entry = {
+            "transaction_id": transaction_id,
+            "user_id": user_id,
+            "amount": transaction_data['amount'],
+            "location": transaction_data['location'],
+            "type": transaction_data['type'],
+            "timestamp": transaction_data['timestamp'],
+            "risk_score": risk_result['risk_score'],
+            "risk_decision": risk_result['decision'],
+            "approved": result['approved'],
+            "liveness_performed": result['liveness_performed'],
+            "liveness_success": result.get('liveness_result', {}).get('success', False) if result['liveness_performed'] else None,
+            "logged_at": datetime.now().isoformat()
+        }
+        self.logger.log_transaction(log_entry)
         
         # Resumo final
         print("\n" + "="*70)
