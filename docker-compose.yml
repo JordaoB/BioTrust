@@ -1,0 +1,59 @@
+services:
+  # API REST Service
+  biotrust-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: biotrust-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount data directory para persistência
+      - ./data:/app/data
+      # Mount logs
+      - ./logs:/app/logs
+      # Mount source para hot-reload em desenvolvimento
+      - ./src:/app/src
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    restart: unless-stopped
+    networks:
+      - biotrust-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Streamlit Web Interface (opcional - comentado por padrão)
+  # Descomente se quiser rodar Streamlit em Docker também
+  # biotrust-web:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.streamlit
+  #   container_name: biotrust-web
+  #   ports:
+  #     - "8501:8501"
+  #   volumes:
+  #     - ./web/streamlit:/app/web/streamlit
+  #   environment:
+  #     - API_URL=http://biotrust-api:8000
+  #   depends_on:
+  #     - biotrust-api
+  #   restart: unless-stopped
+  #   networks:
+  #     - biotrust-network
+
+networks:
+  biotrust-network:
+    driver: bridge
+
+volumes:
+  biotrust-data:
+    driver: local
+  biotrust-logs:
+    driver: local

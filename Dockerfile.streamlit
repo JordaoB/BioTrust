@@ -1,0 +1,36 @@
+# BioTrust - Dockerfile para Streamlit Web Interface
+FROM python:3.10-slim
+
+LABEL maintainer="BioTrust Team - TecStorm '26"
+LABEL description="BioTrust Streamlit Dashboard"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+# Instalar dependências do sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar requirements e instalar
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar código do frontend
+COPY web/streamlit/ ./web/streamlit/
+
+# Expor porta do Streamlit
+EXPOSE 8501
+
+# Configurar Streamlit
+RUN mkdir -p ~/.streamlit && \
+    echo "[server]\nheadless = true\nport = 8501\nenableCORS = false\n" > ~/.streamlit/config.toml
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+
+# Rodar Streamlit
+CMD ["streamlit", "run", "web/streamlit/web_app.py", "--server.address", "0.0.0.0"]

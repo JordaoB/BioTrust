@@ -209,7 +209,18 @@ Com o avanço da **Inteligência Artificial**, os **deepfakes** e ataques de apr
 - ✅ TESTE_COMPLETO.md - Checklist de testes
 - ✅ PASSIVE_LIVENESS_TECH.md - Explicação técnica rPPG
 - ✅ PROJECT_STRUCTURE.md - Estrutura organizada
+- ✅ DOCKER_GUIDE.md - Guia completo de Docker
 - ✅ Requirements.txt completo
+
+#### 🐳 **10. Docker & DevOps**
+- ✅ **Dockerfile** - Image otimizada com Python 3.10-slim
+- ✅ **docker-compose.yml** - Orquestração completa
+- ✅ **.dockerignore** - Build otimizado
+- ✅ **Health checks** - Monitoramento automático
+- ✅ **Volume mounting** - Persistência de dados
+- ✅ **Scripts de startup** - docker-start.bat & .sh
+- ✅ **Suporte multi-OS** - Windows, Linux, macOS
+- ✅ **Production-ready** - Deploy em cloud simplificado
 
 ---
 
@@ -310,6 +321,22 @@ BioTrust/
 | **Streamlit** | 1.54.0 | Web dashboard interativo |
 | **Requests** | 2.32.5 | HTTP client para testes |
 
+### **DevOps & Deployment**
+
+<div align="center">
+
+![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Docker Compose](https://img.shields.io/badge/Docker_Compose-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+
+</div>
+
+| Tecnologia | Status | Uso |
+|-----------|--------|-----|
+| **Docker** | ✅ Implementado | Containerização da API |
+| **Docker Compose** | ✅ Implementado | Orquestração de serviços |
+| **Dockerfile** | ✅ Multi-stage | Imagem otimizada |
+| **Health Checks** | ✅ Configurado | Monitoramento automático |
+
 ### **Algoritmos Implementados**
 
 - **EAR (Eye Aspect Ratio)** - Deteção de piscadelas
@@ -331,6 +358,39 @@ BioTrust/
 
 ### **Instalação Rápida (< 5 minutos)**
 
+#### **🐳 Método 1: Docker (RECOMENDADO) - Produção-Ready**
+
+Se tens Docker instalado, é o método mais simples e profissional:
+
+```bash
+# 1. Clonar o repositório
+git clone https://github.com/your-team/biotrust.git
+cd biotrust
+
+# 2. Iniciar com Docker (1 comando!)
+# Windows:
+.\scripts\docker-start.bat
+
+# Linux/macOS:
+chmod +x scripts/docker-start.sh
+./scripts/docker-start.sh
+```
+
+✅ **Vantagens:**
+- Zero configuração de ambiente Python
+- Funciona em qualquer OS (Windows/Linux/macOS)
+- Isolamento completo
+- Pronto para deploy em cloud
+- Consistência garantida
+
+📚 **Documentação completa:** [DOCKER_GUIDE.md](docs/DOCKER_GUIDE.md)
+
+---
+
+#### **🐍 Método 2: Python Virtual Environment (Desenvolvimento local)**
+
+Para desenvolvimento com câmera:
+
 ```bash
 # 1. Clonar o repositório
 git clone https://github.com/your-team/biotrust.git
@@ -346,14 +406,24 @@ py -3.10 -m venv venv310
 pip install -r requirements.txt
 ```
 
-### **🎯 Iniciar Sistema Completo (1 comando!)**
+### **🎯 Iniciar Sistema Completo**
 
+#### **🐳 Com Docker:**
+```bash
+# Windows:
+.\scripts\docker-start.bat
+
+# Linux/macOS:
+./scripts/docker-start.sh
+```
+
+#### **🐍 Com Python (local):**
 ```bash
 # Inicia API + Streamlit automaticamente
 .\scripts\start_all.bat
 ```
 
-Isso vai:
+**O que isso faz:**
 1. ✅ Iniciar API em http://localhost:8000
 2. ✅ Iniciar Streamlit em http://localhost:8501
 3. ✅ Abrir automaticamente no navegador
@@ -966,7 +1036,8 @@ Remote Photoplethysmography (rPPG) deteta variações mínimas de cor da pele ca
 | 🧪 **Algoritmos Implementados** | 6 |
 | 🔗 **API Endpoints** | 4 |
 | 🌐 **Interfaces Web** | 2 |
-| 📚 **Páginas de Documentação** | 6 |
+| 📚 **Páginas de Documentação** | 7 |
+| 🐳 **Docker Ready** | ✅ Sim |
 | ⏱️ **Tempo de Desenvolvimento** | 48h (Hackathon) |
 | 🏆 **Taxa de Sucesso (Liveness)** | ~95% |
 | ⚡ **Tempo Médio de Verificação** | ~25s |

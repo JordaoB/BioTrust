@@ -107,3 +107,13 @@ face_images/
 *.dll
 *.so
 *.dylib
+
+# Docker
+.docker/
+docker-compose.override.yml
+.env
+.env.local
+
+# Logs
+logs/
+*.log
