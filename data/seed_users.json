@@ -1,0 +1,148 @@
+{
+  "users": [
+    {
+      "name": "João Silva",
+      "email": "joao.silva@example.com",
+      "password": "password123",
+      "phone": "+351 912 345 678",
+      "home_location": {
+        "city": "Lisboa",
+        "country": "Portugal",
+        "lat": 38.7223,
+        "lon": -9.1393
+      },
+      "account_age_days": 365,
+      "average_transaction": 45.0,
+      "max_transaction": 300.0,
+      "is_verified": true,
+      "cards": [
+        {
+          "card_holder": "JOAO SILVA",
+          "card_type": "visa",
+          "card_number": "4532015112830366",
+          "cvv": "123",
+          "expiry_month": 12,
+          "expiry_year": 2028,
+          "is_default": true
+        }
+      ]
+    },
+    {
+      "name": "Maria Santos",
+      "email": "maria.santos@example.com",
+      "password": "password123",
+      "phone": "+351 934 567 890",
+      "home_location": {
+        "city": "Porto",
+        "country": "Portugal",
+        "lat": 41.1579,
+        "lon": -8.6291
+      },
+      "account_age_days": 15,
+      "average_transaction": 80.0,
+      "max_transaction": 200.0,
+      "is_verified": false,
+      "cards": [
+        {
+          "card_holder": "MARIA SANTOS",
+          "card_type": "mastercard",
+          "card_number": "5425233430109903",
+          "cvv": "456",
+          "expiry_month": 6,
+          "expiry_year": 2027,
+          "is_default": true
+        }
+      ]
+    },
+    {
+      "name": "Ana Costa",
+      "email": "ana.costa@example.com",
+      "password": "password123",
+      "phone": "+351 965 432 109",
+      "home_location": {
+        "city": "Braga",
+        "country": "Portugal",
+        "lat": 41.5454,
+        "lon": -8.4265
+      },
+      "account_age_days": 1200,
+      "average_transaction": 250.0,
+      "max_transaction": 2000.0,
+      "is_verified": true,
+      "cards": [
+        {
+          "card_holder": "ANA COSTA",
+          "card_type": "visa",
+          "card_number": "4916338506082832",
+          "cvv": "789",
+          "expiry_month": 3,
+          "expiry_year": 2029,
+          "is_default": true
+        },
+        {
+          "card_holder": "ANA COSTA",
+          "card_type": "amex",
+          "card_number": "374245455400126",
+          "cvv": "9876",
+          "expiry_month": 9,
+          "expiry_year": 2028,
+          "is_default": false
+        }
+      ]
+    },
+    {
+      "name": "Pedro Oliveira",
+      "email": "pedro.oliveira@example.com",
+      "password": "password123",
+      "phone": "+351 917 654 321",
+      "home_location": {
+        "city": "Lisboa",
+        "country": "Portugal",
+        "lat": 38.7436,
+        "lon": -9.2302
+      },
+      "account_age_days": 180,
+      "average_transaction": 120.0,
+      "max_transaction": 450.0,
+      "is_verified": true,
+      "cards": [
+        {
+          "card_holder": "PEDRO OLIVEIRA",
+          "card_type": "mastercard",
+          "card_number": "2221000010000015",
+          "cvv": "321",
+          "expiry_month": 11,
+          "expiry_year": 2027,
+          "is_default": true
+        }
+      ]
+    },
+    {
+      "name": "Sofia Rodrigues",
+      "email": "sofia.rodrigues@example.com",
+      "password": "password123",
+      "phone": "+351 928 765 432",
+      "home_location": {
+        "city": "Porto",
+        "country": "Portugal",
+        "lat": 41.1621,
+        "lon": -8.6218
+      },
+      "account_age_days": 90,
+      "average_transaction": 65.0,
+      "max_transaction": 180.0,
+      "is_verified": true,
+      "cards": [
+        {
+          "card_holder": "SOFIA RODRIGUES",
+          "card_type": "visa",
+          "card_number": "4024007134564842",
+          "cvv": "654",
+          "expiry_month": 5,
+          "expiry_year": 2028,
+          "is_default": true
+        }
+      ]
+    }
+  ]
+}

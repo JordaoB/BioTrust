@@ -55,11 +55,16 @@ logs/
 
 # Transaction History & User Data
 transaction_log.json
+data/transaction_log.json
 user_data/
 *.db
 *.sqlite
 
-# OS - Windows
+# MongoDB Local Data
+mongodb_data/
+dump/
+
+# Camera Captures (if saving images)
 Thumbs.db
 ehthumbs.db
 Desktop.ini
@@ -117,3 +122,20 @@ docker-compose.override.yml
 # Logs
 logs/
 *.log
+
+# MongoDB Local Data
+mongodb_data/
+dump/
+
+# Biometric Data - NEVER COMMIT (Privacy-by-Design Principle)
+biometric_data/
+face_encodings/
+*.npy
+*.pkl
+video_frames/
+
+# Media Files (prevent accidental commits)
+*.mp4
+*.avi
+*.mov
+*.mkv
