@@ -6,9 +6,12 @@ Privacy-by-Design: No biometric data storage, real-time verification only
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from backend.config import settings
 from backend.database import connect_to_mongo, close_mongo_connection
 import logging
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -53,6 +56,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ========== STATIC FILES (Frontend) ==========
+# Serve static files (CSS, JS, images)
+web_dir = Path(__file__).parent.parent / "web"
+if web_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(web_dir)), name="static")
+    logger.info(f"📁 Serving static files from: {web_dir}")
+    
+    # Serve index.html at /web route
+    @app.get("/web", tags=["Frontend"])
+    async def serve_frontend():
+        """Serve the web frontend"""
+        index_path = web_dir / "index.html"
+        if index_path.exists():
+            return FileResponse(str(index_path))
+        return {"error": "Frontend not found"}
+else:
+    logger.warning(f"⚠️ Web directory not found: {web_dir}")
+
+# ==============================================
+
 # Health check endpoint
 @app.get("/", tags=["Health"])
 async def root():
@@ -75,12 +98,13 @@ async def health_check():
     }
 
 # Import and register routes
-from backend.routes import users, merchants, transactions, liveness
+from backend.routes import users, merchants, transactions, liveness, liveness_stream
 
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(merchants.router, prefix="/api/merchants", tags=["Merchants"])
 app.include_router(transactions.router, prefix="/api/transactions", tags=["Transactions"])
 app.include_router(liveness.router, prefix="/api/liveness", tags=["Liveness Detection"])
+app.include_router(liveness_stream.router, prefix="/api/liveness-stream", tags=["Liveness Stream"])
 
 if __name__ == "__main__":
     import uvicorn

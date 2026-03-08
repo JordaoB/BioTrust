@@ -1,0 +1,236 @@
+/* ==============================================
+   BioTrust - Custom Styles
+   ============================================== */
+
+/* Smooth scrolling para toda a página */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Animações personalizadas */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse-ring {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+/* Aplicar fade-in a seções */
+section {
+    animation: fadeIn 0.5s ease-out;
+}
+
+/* Efeito de hover nos botões de utilizador */
+.user-card {
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.user-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+}
+
+/* Loading spinner customizado */
+.spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Webcam overlay com borda animada */
+#webcam {
+    border: 4px solid transparent;
+    transition: border-color 0.3s ease;
+    /* IMPORTANTE: Desespelhar vídeo para não confundir esquerda/direita */
+    transform: scaleX(-1);
+    -webkit-transform: scaleX(-1);
+}
+
+#webcam.detecting {
+    border-color: #8b5cf6; /* Purple */
+    animation: pulse-ring 1.5s ease-out infinite;
+}
+
+#webcam.success {
+    border-color: #10b981; /* Green */
+}
+
+#webcam.error {
+    border-color: #ef4444; /* Red */
+}
+
+/* Progress bar animada */
+.progress-bar-animated {
+    background: linear-gradient(
+        90deg,
+        #6366f1 0%,
+        #8b5cf6 25%,
+        #a855f7 50%,
+        #8b5cf6 75%,
+        #6366f1 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite linear;
+}
+
+/* Risk level badges */
+.risk-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.risk-low {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.risk-medium {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.risk-high {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+/* Card brand icons colors */
+.fa-cc-visa {
+    color: #1a1f71;
+}
+
+.fa-cc-mastercard {
+    color: #eb001b;
+}
+
+.fa-cc-amex {
+    color: #006fcf;
+}
+
+/* Glassmorphism effect */
+.glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    h1 {
+        font-size: 1.5rem;
+    }
+    
+    #account-balance {
+        font-size: 2rem;
+    }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #6366f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #4f46e5;
+}
+
+/* Tooltips */
+.tooltip {
+    position: relative;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+}
+
+.tooltip:hover::after {
+    opacity: 1;
+}
+
+/* Success/Error animations */
+@keyframes bounce-in {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.result-icon {
+    animation: bounce-in 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* Print-friendly styles */
+@media print {
+    header,
+    .no-print {
+        display: none;
+    }
+    
+    body {
+        background: white;
+    }
+}

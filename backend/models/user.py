@@ -88,12 +88,12 @@ class UserInDB(UserBase):
 class User(UserBase):
     """User response schema (excludes sensitive data)"""
     id: str = Field(..., alias="_id")
-    created_at: datetime
-    account_age_days: int
-    average_transaction: float
-    transactions_today: int
-    is_verified: bool
-    liveness_verifications_count: int
+    created_at: Optional[datetime] = None
+    account_age_days: int = 0
+    average_transaction: float = 0.0
+    transactions_today: int = 0
+    is_verified: bool = False
+    liveness_verifications_count: int = 0
     
     class Config:
         populate_by_name = True

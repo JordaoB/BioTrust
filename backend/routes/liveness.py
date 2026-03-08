@@ -10,34 +10,47 @@ from backend.database import get_database
 import sys
 import os
 import cv2
+import numpy as np
 
 # Import liveness detector
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-from src.core.liveness_detector_v2 import LivenessDetectorV2
+from src.core.liveness_detector_v3 import LivenessDetectorV3
 
 router = APIRouter()
+
+
+def convert_numpy_types(obj):
+    """
+    Recursively convert numpy types to Python native types
+    MongoDB cannot serialize numpy.bool_, numpy.int64, etc.
+    """
+    if isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, (np.int8, np.int16, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, (np.float16, np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
 
 
 @router.post("/verify/{transaction_id}")
 async def verify_liveness(
     transaction_id: str,
-    timeout: int = 60,
+    timeout: int = 90,
     db=Depends(get_database)
 ):
     """
     Perform liveness verification for a transaction
+    CHAMA O LIVENESS_DETECTOR_V3.PY DIRETAMENTE
     
-    PRIVACY NOTE:
-    - Video frames are processed in real-time and immediately discarded
-    - Only verification metadata is stored (no images, no face encodings)
-    - Metadata includes: challenges completed, heart rate, confidence scores
-    
-    Args:
-        transaction_id: Transaction requiring verification
-        timeout: Max time in seconds (default 60s)
-    
-    Returns:
-        Liveness verification result with metadata only
+    Abre janela OpenCV no servidor para verificação
     """
     from bson import ObjectId
     
@@ -59,84 +72,98 @@ async def verify_liveness(
             detail="Liveness verification already completed"
         )
     
-    # Initialize liveness detector
-    detector = LivenessDetectorV2()
+    # Initialize liveness detector V3
+    detector = LivenessDetectorV3()
+    
+    # Determinar risk level baseado no score
+    risk_score = transaction.get("risk_score", 50)
+    if risk_score > 70:
+        risk_level = "high"
+    elif risk_score > 40:
+        risk_level = "medium"
+    else:
+        risk_level = "low"
+    
+    print(f"\n{'='*70}")
+    print(f"🔐 INICIANDO VERIFICAÇÃO BIOMÉTRICA")
+    print(f"Transaction ID: {transaction_id}")
+    print(f"Risk Score: {risk_score}")
+    print(f"Risk Level: {risk_level.upper()}")
+    print(f"{'='*70}\n")
     
     try:
-        # Perform verification
-        # Note: In production, this would stream from frontend webcam
-        # For now, opens local camera (demo mode)
-        result = detector.verify(timeout=timeout)
+        # CHAMA O VERIFY() DIRETAMENTE - ABRE JANELA OpenCV
+        result = detector.verify(
+            timeout_seconds=timeout,
+            enable_passive=True,  # rPPG heart rate
+            risk_level=risk_level,
+            require_rppg=False  # Advisory only
+        )
         
-        # Extract METADATA ONLY (no raw biometric data)
-        liveness_result = {
-            "success": result["success"],
-            "challenges_completed": result.get("challenges_completed", 0),
-            "heart_rate": result.get("heart_rate"),
-            "heart_rate_confidence": result.get("heart_rate_confidence"),
-            "anti_spoofing": {
-                "early_detection_passed": result.get("anti_spoofing", {}).get("early_detection_passed", False),
-                "video_detected": result.get("anti_spoofing", {}).get("video_detected", False),
-                "printed_photo_detected": result.get("anti_spoofing", {}).get("printed_photo_detected", False),
-                "mask_detected": result.get("anti_spoofing", {}).get("mask_detected", False),
-                "final_confidence": result.get("anti_spoofing", {}).get("final_confidence", 0.0)
+        print(f"\n{'='*70}")
+        print(f"📊 RESULTADO DA VERIFICAÇÃO:")
+        print(f"Success: {result['success']}")
+        print(f"Message: {result['message']}")
+        print(f"Challenges: {result.get('challenges_completed', [])}")
+        print(f"{'='*70}\n")
+        
+        # Convert numpy types to Python native types for MongoDB
+        result = convert_numpy_types(result)
+        
+        # Update transaction
+        update_data = {
+            "liveness_performed": True,
+            "liveness_result": {
+                "success": result["success"],
+                "message": result["message"],
+                "challenges_completed": result.get("challenges_completed", []),
+                "heart_rate": result.get("heart_rate"),
+                "heart_rate_confidence": result.get("heart_rate_confidence"),
+                "anti_spoofing": result.get("anti_spoofing", {}),
+                "timestamp": datetime.utcnow()
             },
-            "timestamp": datetime.utcnow().isoformat()
+            "status": "approved" if result["success"] else "rejected",
+            "updated_at": datetime.utcnow()
         }
-        
-        # Update transaction with liveness result
-        from backend.models.transaction import TransactionStatus
-        new_status = TransactionStatus.APPROVED if result["success"] else TransactionStatus.REJECTED
         
         await db.transactions.update_one(
             {"_id": transaction_obj_id},
-            {
-                "$set": {
-                    "liveness_performed": True,
-                    "liveness_result": liveness_result,
-                    "status": new_status,
-                    "updated_at": datetime.utcnow()
-                }
-            }
+            {"$set": update_data}
         )
         
-        # Update user liveness verification count
-        from bson import ObjectId
-        await db.users.update_one(
-            {"_id": ObjectId(transaction["user_id"]) if ObjectId.is_valid(transaction["user_id"]) else transaction["user_id"]},
-            {"$inc": {"liveness_verifications_count": 1}}
-        )
+        # Fetch updated transaction
+        updated_transaction = await db.transactions.find_one({"_id": transaction_obj_id})
+        
+        # Serialize ObjectIds
+        if "_id" in updated_transaction:
+            updated_transaction["_id"] = str(updated_transaction["_id"])
+        if "user_id" in updated_transaction:
+            updated_transaction["user_id"] = str(updated_transaction["user_id"])
+        if "card_id" in updated_transaction:
+            updated_transaction["card_id"] = str(updated_transaction["card_id"])
         
         return {
-            "transaction_id": transaction_id,
-            "liveness_result": liveness_result,
-            "status": new_status,
-            "privacy_note": "No biometric data stored - only verification metadata"
+            "success": result["success"],
+            "message": result["message"],
+            "transaction": updated_transaction,
+            "liveness_details": {
+                "challenges_completed": result.get("challenges_completed", []),
+                "heart_rate": result.get("heart_rate"),
+                "confidence": result.get("heart_rate_confidence"),
+                "anti_spoofing": result.get("anti_spoofing", {})
+            }
         }
         
     except Exception as e:
-        # Log error but do not store biometric data
-        return {
-            "transaction_id": transaction_id,
-            "success": False,
-            "error": str(e),
-            "liveness_result": {
-                "success": False,
-                "challenges_completed": 0,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        }
-    finally:
-        # Ensure detector resources are released
-        detector.release()
+        import traceback
+        print(f"\n❌ ERRO na verificação: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Liveness verification failed: {str(e)}")
 
 
 @router.get("/status/{transaction_id}")
 async def get_liveness_status(transaction_id: str, db=Depends(get_database)):
-    """
-    Get liveness verification status for a transaction
-    Returns only metadata - no biometric data
-    """
+    """Get liveness verification status for a transaction"""
     from bson import ObjectId
     
     transaction_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id

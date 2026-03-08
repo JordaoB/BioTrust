@@ -391,6 +391,311 @@ class LivenessDetectorV3:
         
         return heart_rate, confidence, is_valid
     
+    # ========== WEB SESSION METHODS (for browser integration) ==========
+    
+    def start_web_session(self, risk_level="medium"):
+        """
+        Initialize a web-based liveness session (for processing browser frames).
+        Call this before sending frames via process_web_frame().
+        
+        Args:
+            risk_level: "low", "medium", "high", or "critical"
+            
+        Returns:
+            dict with session info and first challenge
+        """
+        # Reset all state
+        self.liveness_verified = False
+        self.prev_eye_midpoint = None
+        self.blink_frame_counter = 0
+        self.mouth_open_armed = False
+        self.challenge_counter = 0
+        self.challenge_start_frame = 0
+        self.current_challenge_idx = 0
+        self.must_return_neutral = False
+        self.challenge_armed = False
+        self.frontal_stable_counter = 0
+        self.baseline_mouth_width = None
+        self.baseline_frames_collected = 0
+        self.frame_count_web = 0
+        
+        # Clear anti-spoofing data
+        self.texture_scores = []
+        self.moire_scores = []
+        self.color_variance_history = []
+        self.micro_movements = []
+        self.green_values = []
+        self.timestamps = []
+        
+        # Generate random challenge sequence
+        risk_mapping = {
+            "low": (3, 4),
+            "medium": (4, 5),
+            "high": (5, 6),
+            "critical": (6, 7)
+        }
+        min_challenges, max_challenges = risk_mapping.get(risk_level, (4, 5))
+        num_challenges = random.randint(min_challenges, min(max_challenges, len(self.CHALLENGE_TYPES)))
+        available_challenges = list(self.CHALLENGE_TYPES.keys())
+        self.challenge_sequence = random.sample(available_challenges, num_challenges)
+        random.shuffle(self.challenge_sequence)
+        
+        print(f"\n[WEB SESSION] Started with {len(self.challenge_sequence)} challenges: {self.challenge_sequence}")
+        
+        first_challenge = self.challenge_sequence[0]
+        return {
+            "total_challenges": len(self.challenge_sequence),
+            "challenges": [self.CHALLENGE_TYPES[c]["name"] for c in self.challenge_sequence],
+            "current_challenge": {
+                "type": first_challenge,
+                "name": self.CHALLENGE_TYPES[first_challenge]["name"]
+            }
+        }
+    
+    def process_web_frame(self, frame):
+        """
+        Process a single frame from browser webcam.
+        This maintains inter-frame state for challenge progression.
+        
+        Args:
+            frame: NumPy array (BGR) from browser
+            
+        Returns:
+            dict: {
+                "status": "in_progress"|"completed"|"failed",
+                "progress": 0-100,
+                "current_challenge": {...},
+                "feedback": "message",
+                "anti_spoofing_failed": bool (optional)
+            }
+        """
+        if not hasattr(self, 'frame_count_web'):
+            return {"status": "failed", "feedback": "Session not started - call start_web_session() first"}
+        
+        self.frame_count_web += 1
+        frame = cv2.flip(frame, 1)  # Mirror like desktop version
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = self.face_mesh.process(rgb)
+        
+        h, w, _ = frame.shape
+        
+        if not results.multi_face_landmarks:
+            return {
+                "status": "in_progress",
+                "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
+                "current_challenge": self._get_current_challenge_info(),
+                "feedback": "❌ Rosto não detected detectado. Posicione-se na câmara.",
+                "completed_challenges": self.current_challenge_idx
+            }
+        
+        face_landmarks = results.multi_face_landmarks[0]
+        landmarks = np.array([[int(lm.x * w), int(lm.y * h)] for lm in face_landmarks.landmark])
+        
+        # Anti-spoofing checks
+        x_coords = landmarks[:, 0]
+        y_coords = landmarks[:, 1]
+        x_min, x_max = max(0, min(x_coords)), min(w, max(x_coords))
+        y_min, y_max = max(0, min(y_coords)), min(h, max(y_coords))
+        
+        if x_max > x_min and y_max > y_min and self.frame_count_web % 3 == 0:
+            face_roi = frame[y_min:y_max, x_min:x_max]
+            self.texture_scores.append(self.analyze_texture(face_roi))
+            self.moire_scores.append(self.detect_moire_pattern(face_roi))
+            self.color_variance_history.append(self.analyze_color_variance(face_roi))
+            
+            # Early spoofing detection (after 30 frames = ~3 seconds)
+            if self.frame_count_web == 30 and len(self.texture_scores) >= 10:
+                avg_texture = np.mean(self.texture_scores)
+                avg_moire = np.mean(self.moire_scores)
+                avg_color_var = np.mean(self.color_variance_history)
+                
+                if avg_texture < self.TEXTURE_THRESHOLD:
+                    return {
+                        "status": "failed",
+                        "progress": 0,
+                        "feedback": "🚫 SPOOFING DETECTADO: Tela/monitor detectado",
+                        "anti_spoofing_failed": True,
+                        "reason": "screen_detected"
+                    }
+                if avg_moire > self.MOIRE_THRESHOLD:
+                    return {
+                        "status": "failed",
+                        "progress": 0,
+                        "feedback": "🚫 SPOOFING DETECTADO: Padrão de interferência detectado",
+                        "anti_spoofing_failed": True,
+                        "reason": "moire_detected"
+                    }
+                if avg_color_var < self.COLOR_VARIANCE_MIN:
+                    return {
+                        "status": "failed",
+                        "progress": 0,
+                        "feedback": "🚫 SPOOFING DETECTADO: Vídeo gravado detectado",
+                        "anti_spoofing_failed": True,
+                        "reason": "video_detected"
+                    }
+        
+        # Extract facial features
+        left_eye = landmarks[self.LEFT_EYE]
+        right_eye = landmarks[self.RIGHT_EYE]
+        left_eye_center = np.mean(left_eye, axis=0)
+        right_eye_center = np.mean(right_eye, axis=0)
+        eye_midpoint = (left_eye_center + right_eye_center) / 2
+        
+        nose = landmarks[1]
+        mouth_outer = landmarks[self.MOUTH_OUTER[:min(len(self.MOUTH_OUTER), len(landmarks))]]
+        mouth_vertical = landmarks[self.MOUTH_VERTICAL]
+        left_brow = landmarks[self.LEFT_EYEBROW]
+        right_brow = landmarks[self.RIGHT_EYEBROW]
+        
+        # Track micro-movements
+        movement = 0.0
+        if self.prev_eye_midpoint is not None:
+            movement = np.linalg.norm(eye_midpoint - self.prev_eye_midpoint)
+            self.micro_movements.append(movement)
+        self.prev_eye_midpoint = eye_midpoint
+        
+        # Analyze head pose
+        is_frontal, is_left, is_right, _ = self.analyze_head_pose(nose, left_eye_center, right_eye_center)
+        nose_eye_ratio = (nose[1] - eye_midpoint[1]) / (h + 1e-6)
+        face_pitch_ok = 0.02 < nose_eye_ratio < 0.13
+        face_frontal = is_frontal and face_pitch_ok
+        movement_ok = movement < 24
+        
+        # Calculate detection metrics
+        left_ear = self.calculate_ear(left_eye)
+        right_ear = self.calculate_ear(right_eye)
+        both_eyes_closed = (left_ear < self.EAR_THRESHOLD and right_ear < self.EAR_THRESHOLD)
+        is_smiling = self.detect_smile(mouth_outer)
+        is_mouth_open = self.detect_mouth_open(mouth_vertical, mouth_outer)
+        are_eyebrows_raised = self.detect_eyebrows_raised(left_brow, right_brow, left_eye, right_eye)
+        
+        # Challenge processing
+        if self.current_challenge_idx >= len(self.challenge_sequence):
+            # All challenges completed!
+            return {
+                "status": "completed",
+                "progress": 100,
+                "current_challenge": {"name": "Concluído", "type": "done"},
+                "feedback": "✅ Todas as verificações completas!",
+                "completed_challenges": len(self.challenge_sequence)
+            }
+        
+        current_challenge = self.challenge_sequence[self.current_challenge_idx]
+        challenge_info = self.CHALLENGE_TYPES[current_challenge]
+        
+        # Check timeout
+        frames_in_challenge = self.frame_count_web - self.challenge_start_frame
+        if frames_in_challenge > challenge_info["timeout_frames"]:
+            return {
+                "status": "failed",
+                "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
+                "feedback": f"⏱️ Tempo esgotado no desafio: {challenge_info['name']}",
+                "completed_challenges": self.current_challenge_idx
+            }
+        
+        # Arm challenge (need stable frontal pose first)
+        if not self.challenge_armed:
+            if face_frontal and movement_ok:
+                self.frontal_stable_counter += 1
+                if self.frontal_stable_counter >= self.CHALLENGE_ARM_FRAMES:
+                    self.challenge_armed = True
+                    self.challenge_counter = 0
+                    self.blink_frame_counter = 0
+                    self.mouth_open_armed = False
+                    return {
+                        "status": "in_progress",
+                        "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
+            "current_challenge": self._get_current_challenge_info(),
+                        "feedback": f"✅ Pronto! Agora: {challenge_info['name']}",
+                        "completed_challenges": self.current_challenge_idx
+                    }
+            else:
+                return {
+                    "status": "in_progress",
+                    "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
+                    "current_challenge": self._get_current_challenge_info(),
+                    "feedback": "📍 Posicione o rosto de frente para a câmara...",
+                    "completed_challenges": self.current_challenge_idx
+                }
+        
+        # Process challenge based on type
+        challenge_satisfied = False
+        
+        if current_challenge == "blink":
+            if both_eyes_closed:
+                self.blink_frame_counter += 1
+            elif self.blink_frame_counter >= self.CONSEC_FRAMES:
+                self.challenge_counter += 1
+                self.blink_frame_counter = 0
+                if self.challenge_counter >= challenge_info["required_count"]:
+                    challenge_satisfied = True
+        elif current_challenge == "smile":
+            if is_smiling:
+                self.challenge_counter += 1
+                if self.challenge_counter >= challenge_info["required_count"] * 10:
+                    challenge_satisfied = True
+        elif current_challenge == "mouth_open":
+            if is_mouth_open:
+                self.challenge_counter += 1
+                if self.challenge_counter >= challenge_info["required_count"] * 8:
+                    challenge_satisfied = True
+        elif current_challenge == "turn_left":
+            if is_left:
+                self.challenge_counter += 1
+                if self.challenge_counter >= challenge_info["required_count"] * 15:
+                    challenge_satisfied = True
+        elif current_challenge == "turn_right":
+            if is_right:
+                self.challenge_counter += 1
+                if self.challenge_counter >= challenge_info["required_count"] * 15:
+                    challenge_satisfied = True
+        elif current_challenge == "eyebrows_up":
+            if are_eyebrows_raised:
+                self.challenge_counter += 1
+                if self.challenge_counter >= challenge_info["required_count"] * 20:
+                    challenge_satisfied = True
+        
+        if challenge_satisfied:
+            print(f"[WEB] ✅ Challenge {self.current_challenge_idx + 1}/{len(self.challenge_sequence)} completed: {challenge_info['name']}")
+            self.current_challenge_idx += 1
+            self.challenge_start_frame = self.frame_count_web
+            self.challenge_armed = False
+            self.frontal_stable_counter = 0
+            self.must_return_neutral = True
+            
+            if self.current_challenge_idx >= len(self.challenge_sequence):
+                return {
+                    "status": "completed",
+                    "progress": 100,
+                    "current_challenge": {"name": "Concluído", "type": "done"},
+                    "feedback": "✅ Verificação completa!",
+                    "completed_challenges": len(self.challenge_sequence)
+                }
+        
+        # Return current progress
+        progress = ((self.current_challenge_idx + (self.challenge_counter / (challenge_info["required_count"] * 10))) / len(self.challenge_sequence)) * 100
+        
+        return {
+            "status": "in_progress",
+            "progress": min(progress, 99),  # Cap at 99% until truly done
+            "current_challenge": self._get_current_challenge_info(),
+            "feedback": f"🎯 {challenge_info['name']} ({self.challenge_counter}/{challenge_info['required_count'] * 10})",
+            "completed_challenges": self.current_challenge_idx
+        }
+    
+    def _get_current_challenge_info(self):
+        """Helper to get current challenge details"""
+        if self.current_challenge_idx >= len(self.challenge_sequence):
+            return {"name": "Concluído", "type": "done"}
+        
+        challenge_key = self.challenge_sequence[self.current_challenge_idx]
+        challenge = self.CHALLENGE_TYPES[challenge_key]
+        return {
+            "type": challenge_key,
+            "name": challenge["name"],
+            "instruction": challenge["name"]
+        }
+    
     # ========== MAIN VERIFICATION METHOD ==========
     
     def verify(self, timeout_seconds=90, enable_passive=True, risk_level="medium", require_rppg=False):
@@ -429,6 +734,8 @@ class LivenessDetectorV3:
         self.frontal_stable_counter = 0
         self.baseline_mouth_width = None
         self.baseline_frames_collected = 0
+        self.wrong_move_count = 0  # Track wrong movements (1st=reset, 2nd=block)
+        self.wrong_move_cooldown = 0  # Prevent multiple detections of same error
         
         # Clear anti-spoofing data
         self.texture_scores = []
@@ -481,7 +788,9 @@ class LivenessDetectorV3:
         cv2.setWindowProperty(self.WINDOW_NAME, cv2.WND_PROP_TOPMOST, 1)
         cv2.moveWindow(self.WINDOW_NAME, 250, 80)
         cv2.resizeWindow(self.WINDOW_NAME, 900, 650)
-        time.sleep(0.2)
+        print(f"[OK] OpenCV window created: {self.WINDOW_NAME}")
+        print("[INFO] Window should appear on your screen now...")
+        time.sleep(0.5)  # Increased from 0.2 to give more time for window to appear
         
         # ========== WARMUP PHASE (rPPG baseline collection) ==========
         
@@ -495,12 +804,20 @@ class LivenessDetectorV3:
         challenges_completed = []
         feedback_message = ""
         feedback_frames = 0
+        failed_frame_count = 0
+        MAX_FAILED_FRAMES = 10  # Allow some failed reads before giving up
+        
+        print(f"[INFO] Starting main loop (max {max_frames} frames, ~{timeout_seconds}s)\n")
         
         try:
             while cap.isOpened() and frame_count < max_frames:
                 ret, frame = cap.read()
                 if not ret:
-                    break
+                    failed_frame_count += 1
+                    if failed_frame_count > MAX_FAILED_FRAMES:
+                        print(f"\n[ERROR] Camera read failed {failed_frame_count} times - aborting")
+                        break
+                    continue  # Skip this frame but don't abort yet
                 
                 frame_count += 1
                 frame = cv2.flip(frame, 1)
@@ -685,6 +1002,70 @@ class LivenessDetectorV3:
                             
                             # Process challenge based on type
                             challenge_satisfied = False
+                            
+                            # ========== DETECÇÃO INTELIGENTE DE MOVIMENTOS OPOSTOS ==========
+                            # Só penalizar movimentos CLARAMENTE ERRADOS (direções opostas)
+                            # Não penalizar pequenos movimentos naturais (piscar enquanto sorri, etc)
+                            if self.wrong_move_cooldown > 0:
+                                self.wrong_move_cooldown -= 1
+                            
+                            wrong_action_detected = False
+                            wrong_action_name = ""
+                            
+                            # Verificar apenas MOVIMENTOS OPOSTOS críticos
+                            if self.challenge_armed and self.wrong_move_cooldown == 0:
+                                # DIREÇÕES: Virar lado OPOSTO
+                                if current_challenge == "turn_left" and is_right and not self.must_return_neutral:
+                                    wrong_action_detected = True
+                                    wrong_action_name = "VIROU DIREITA (esperado: ESQUERDA)"
+                                
+                                elif current_challenge == "turn_right" and is_left and not self.must_return_neutral:
+                                    wrong_action_detected = True
+                                    wrong_action_name = "VIROU ESQUERDA (esperado: DIREITA)"
+                                
+                                # CONFUSÃO FACIAL: Smile vs Mouth Open (muito distintos)
+                                elif current_challenge == "smile" and is_mouth_open and not is_smiling:
+                                    wrong_action_detected = True
+                                    wrong_action_name = "ABRIU A BOCA (esperado: SORRIR)"
+                                
+                                elif current_challenge == "mouth_open" and is_smiling and not is_mouth_open:
+                                    wrong_action_detected = True
+                                    wrong_action_name = "SORRIU (esperado: ABRIR BOCA)"
+                            
+                            # ========== PROCESSAR ERRO DETECTADO ==========
+                            if wrong_action_detected:
+                                self.wrong_move_count += 1
+                                self.wrong_move_cooldown = 60  # 2 segundos de cooldown
+                                
+                                challenge_esperado = self.CHALLENGE_TYPES[current_challenge]["name"]
+                                
+                                if self.wrong_move_count == 1:
+                                    # 1º ERRO: Reset para challenge 1
+                                    print(f"\n⚠️  ERRO DETECTADO: {wrong_action_name}")
+                                    print(f"⚠️  PENALIZAÇÃO: Voltando ao início (Challenge 1)\n")
+                                    self.current_challenge_idx = 0
+                                    self.challenge_counter = 0
+                                    self.blink_frame_counter = 0
+                                    self.must_return_neutral = False
+                                    self.challenge_armed = False
+                                    self.frontal_stable_counter = 0
+                                    self.mouth_open_armed = False
+                                    challenges_completed = []
+                                    feedback_message = "ERRO! VOLTANDO AO INICIO"
+                                    feedback_frames = 90
+                                    continue
+                                else:
+                                    # 2º ERRO: BLOQUEAR TRANSAÇÃO
+                                    print(f"\n❌ ERRO CRÍTICO: 2º erro detectado")
+                                    print(f"❌ TRANSAÇÃO BLOQUEADA POR SUSPEITA\n")
+                                    cap.release()
+                                    cv2.destroyAllWindows()
+                                    return {
+                                        "success": False,
+                                        "message": f"[BLOCKED] Multiple wrong movements - Transaction blocked",
+                                        "challenges_completed": challenges_completed,
+                                        "reason": f"Security threshold: {wrong_action_name}"
+                                    }
 
                             # Arm challenge only after stable frontal pose to avoid instant first-step pass.
                             if not self.challenge_armed:
@@ -746,6 +1127,7 @@ class LivenessDetectorV3:
                             
                             elif current_challenge == "turn_left":
                                 if not self.must_return_neutral:
+                                    # CORRETO: Virou ESQUERDA
                                     if is_left:
                                         self.must_return_neutral = True
                                         print(f"  ⬅️  Left turn detected - return to center")
@@ -759,6 +1141,7 @@ class LivenessDetectorV3:
                             
                             elif current_challenge == "turn_right":
                                 if not self.must_return_neutral:
+                                    # CORRETO: Virou DIREITA
                                     if is_right:
                                         self.must_return_neutral = True
                                         print(f"  ➡️  Right turn detected - return to center")
@@ -846,21 +1229,36 @@ class LivenessDetectorV3:
                                       (w//2 - 250, 50), cv2.FONT_HERSHEY_SIMPLEX,
                                       0.9, (150, 255, 150), 2, cv2.LINE_AA)
                 
+                else:
+                    # NO FACE DETECTED - Show warning overlay
+                    overlay = frame.copy()
+                    cv2.rectangle(overlay, (0, 0), (w, 100), (0, 0, 120), -1)
+                    cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+                    
+                    cv2.putText(frame, "NO FACE DETECTED",
+                              (w//2 - 150, 40), cv2.FONT_HERSHEY_SIMPLEX,
+                              0.9, (100, 100, 255), 2, cv2.LINE_AA)
+                    cv2.putText(frame, "Position your face in the frame",
+                              (w//2 - 200, 75), cv2.FONT_HERSHEY_SIMPLEX,
+                              0.6, (200, 200, 200), 1, cv2.LINE_AA)
+                
                 # Show frame
                 cv2.imshow(self.WINDOW_NAME, frame)
                 
-                # Check for window close or ESC
+                # Check for ESC key
                 key = cv2.waitKey(1) & 0xFF
                 if key == 27:  # ESC
+                    print("\n[INFO] ESC pressed - aborting verification")
                     break
                 
-                try:
-                    if cv2.getWindowProperty(self.WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
-                        break
-                except:
-                    break
+                # REMOVED: Window visibility check was causing premature exit
+                # try:
+                #     if cv2.getWindowProperty(self.WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
+                #         break
+                # except:
+                #     break
                 
-                # If 'verified, wait briefly then continue to analysis
+                # If verified, wait briefly then continue to analysis
                 if self.liveness_verified:
                     cv2.waitKey(1000)  # 1 second pause
                     break

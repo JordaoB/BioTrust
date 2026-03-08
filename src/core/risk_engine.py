@@ -30,12 +30,12 @@ class RiskEngine:
     """Motor de análise de risco para transações de pagamento."""
     
     # Pesos dos fatores de risco (total = 100%)
-    # Ajustados para dar mais peso aos fatores críticos
-    WEIGHT_AMOUNT = 0.45      # 45% - Valor é crítico!
-    WEIGHT_LOCATION = 0.40    # 40% - Localização suspeita é muito crítica!
-    WEIGHT_TIME = 0.10        # 10%
-    WEIGHT_BEHAVIOR = 0.03    # 3%
-    WEIGHT_TYPE = 0.02        # 2%
+    # MUITO AGRESSIVO: Valor + Localização são os fatores dominantes
+    WEIGHT_AMOUNT = 0.50      # 50% - Valor é CRÍTICO!
+    WEIGHT_LOCATION = 0.45    # 45% - Localização suspeita é CRÍTICA!
+    WEIGHT_TIME = 0.03        # 3%
+    WEIGHT_BEHAVIOR = 0.01    # 1%
+    WEIGHT_TYPE = 0.01        # 1%
     
     # Thresholds de decisão
     THRESHOLD_LOW_RISK = 30
@@ -89,13 +89,24 @@ class RiskEngine:
         )
         
         # Calcular score total (média ponderada)
-        risk_score = int(
+        base_score = (
             amount_risk * self.WEIGHT_AMOUNT +
             location_risk * self.WEIGHT_LOCATION +
             time_risk * self.WEIGHT_TIME +
             behavior_risk * self.WEIGHT_BEHAVIOR +
             type_risk * self.WEIGHT_TYPE
         )
+        
+        # AMPLIFICADOR DE RISCO: Se AMBOS amount e location são altos, multiplica o risco
+        # Cenário: €5000 a 500km+ = EXTREMAMENTE SUSPEITO
+        if amount_risk >= 80 and location_risk >= 80:
+            # Ambos fatores críticos altos = amplifica para quase 100%
+            base_score = min(base_score * 1.15, 100)  # +15% boost
+        elif amount_risk >= 70 and location_risk >= 70:
+            # Ambos fatores altos = amplifica moderadamente
+            base_score = min(base_score * 1.10, 100)  # +10% boost
+        
+        risk_score = int(base_score)
         
         # Tomar decisão baseada no score
         decision, reason = self._make_decision(risk_score, {
@@ -165,13 +176,15 @@ class RiskEngine:
             # Mais de 10x a média - EXTREMAMENTE SUSPEITO
             score = 100
         
-        # Valores absolutos altos (ajustado para ser mais agressivo)
+        # Valores absolutos altos - MUITO AGRESSIVO
         if amount > 500:
-            score = max(score, 55)  # €500+ já é suspeito
+            score = max(score, 60)   # €500+ já é suspeito
         if amount > 1000:
-            score = max(score, 70)  # €1000+ muito suspeito
+            score = max(score, 75)   # €1000+ muito suspeito
+        if amount > 2500:
+            score = max(score, 85)   # €2500+ extremamente suspeito
         if amount > 5000:
-            score = max(score, 85)
+            score = max(score, 95)   # €5000+ = MÁXIMO RISCO
             
         return min(score, 100)
     
@@ -200,17 +213,19 @@ class RiskEngine:
                 home_location['lat'], home_location['lon']
             )
             
-            # Escala muito agressiva para distâncias suspeitas
+            # Escala EXTREMAMENTE agressiva para distâncias suspeitas
             if distance_km > 500:
-                score += 90  # Muito longe (outro lado do país/internacional)
+                score += 100  # Muito longe = MÁXIMO RISCO
+            elif distance_km > 300:
+                score += 90   # >300km = quase máximo
             elif distance_km > 200:
-                score += 70  # Longe (outra região) - 274km entra aqui! CRÍTICO
+                score += 80   # >200km = muito suspeito
             elif distance_km > 100:
-                score += 45  # Média distância
+                score += 60   # >100km = suspeito
             elif distance_km > 50:
-                score += 20  # Cidade vizinha
+                score += 35   # Cidade vizinha
             elif distance_km > 20:
-                score += 8   # Proximidade
+                score += 15   # Proximidade
             # < 20km: 0 pontos (local)
         
         # Verificar cidade

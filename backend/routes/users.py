@@ -85,16 +85,37 @@ async def create_user(user_data: UserCreate, db=Depends(get_database)):
 @router.get("/{user_id}/cards")
 async def get_user_cards(user_id: str, db=Depends(get_database)):
     """Get all cards for a user"""
+    # Primeiro tenta buscar da coleção separada de cartões
     cards = await db.cards.find({"user_id": user_id}).to_list(length=100)
+    
+    # Se não encontrar, busca os cartões inline do documento do utilizador
     if not cards:
+        user = await db.users.find_one({"_id": user_id})
+        if user and "cards" in user:
+            # Converte cartões inline para o formato esperado
+            inline_cards = user["cards"]
+            return [
+                {
+                    "_id": f"{user_id}_card_{i}",  # ID fictício
+                    "card_type": card["card_type"],
+                    "last_four": card["card_number"][-4:],  # Extrai últimos 4 dígitos
+                    "card_holder": card.get("card_holder", "N/A"),
+                    "expiry_month": card["expiry_month"],
+                    "expiry_year": card["expiry_year"],
+                    "is_default": card.get("is_default", False),
+                    "is_active": True
+                }
+                for i, card in enumerate(inline_cards)
+            ]
         return []
     
-    # Return safe card info (no sensitive data)
+    # Retorna cartões da coleção separada (formato seguro)
     return [
         {
-            "id": str(card["_id"]),
+            "_id": str(card["_id"]),
             "card_type": card["card_type"],
             "last_four": card["last_four"],
+            "card_holder": card.get("card_holder", "N/A"),
             "expiry_month": card["expiry_month"],
             "expiry_year": card["expiry_year"],
             "is_default": card["is_default"],
