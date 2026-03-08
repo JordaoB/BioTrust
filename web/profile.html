@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfil - BioTrust</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --mbway-green: #00A859;
+            --mbway-dark-green: #005A32;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f3f4f6;
+            min-height: 100vh;
+            padding-bottom: 80px;
+        }
+        
+        .header-gradient {
+            background: linear-gradient(135deg, var(--mbway-green) 0%, var(--mbway-dark-green) 100%);
+            padding: 24px 20px 80px;
+            color: white;
+            position: relative;
+        }
+        
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: bold;
+            color: var(--mbway-green);
+            margin: 0 auto 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        }
+        
+        .profile-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        
+        .profile-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 0;
+            border-bottom: 1px solid #f3f4f6;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .profile-item:last-child {
+            border-bottom: none;
+        }
+        
+        .profile-item:hover {
+            background: #f9fafb;
+            margin: 0 -20px;
+            padding: 16px 20px;
+        }
+        
+        .profile-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        
+        .back-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .back-button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            padding: 12px 0;
+        }
+        
+        .nav-item {
+            flex: 1;
+            text-align: center;
+            color: #9ca3af;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        
+        .nav-item.active {
+            color: var(--mbway-green);
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header-gradient">
+        <div class="flex items-center justify-between mb-6">
+            <div class="back-button" onclick="goBack()">
+                <i class="fas fa-arrow-left"></i>
+            </div>
+            <h1 class="text-xl font-bold">Perfil</h1>
+            <div style="width: 40px;"></div>
+        </div>
+        
+        <div class="text-center">
+            <div class="profile-avatar" id="user-initials">JD</div>
+            <h2 class="text-2xl font-bold mb-1" id="user-name">João Doe</h2>
+            <p class="text-sm opacity-90" id="user-email">joao@example.com</p>
+        </div>
+    </div>
+    
+    <!-- Cards positioned to overlap header -->
+    <div style="padding: 0 20px; margin-top: -40px; max-width: 600px; margin-left: auto; margin-right: auto;">
+        <!-- Account Info -->
+        <div class="profile-card fade-in">
+            <h3 class="text-sm font-semibold text-gray-500 mb-3 uppercase">Informações da Conta</h3>
+            
+            <div class="profile-item">
+                <div class="profile-icon" style="background: #dbeafe; color: #2563eb;">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div style="flex: 1;">
+                    <div class="text-sm text-gray-500">Nome</div>
+                    <div class="font-semibold text-gray-800" id="profile-name">-</div>
+                </div>
+            </div>
+            
+            <div class="profile-item">
+                <div class="profile-icon" style="background: #fef3c7; color: #f59e0b;">
+                    <i class="fas fa-envelope"></i>
+                </div>
+                <div style="flex: 1;">
+                    <div class="text-sm text-gray-500">Email</div>
+                    <div class="font-semibold text-gray-800" id="profile-email">-</div>
+                </div>
+            </div>
+            
+            <div class="profile-item">
+                <div class="profile-icon" style="background: #d1fae5; color: #10b981;">
+                    <i class="fas fa-phone"></i>
+                </div>
+                <div style="flex: 1;">
+                    <div class="text-sm text-gray-500">Telefone</div>
+                    <div class="font-semibold text-gray-800" id="profile-phone">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Account Stats -->
+        <div class="profile-card fade-in" style="animation-delay: 0.1s;">
+            <h3 class="text-sm font-semibold text-gray-500 mb-3 uppercase">Estatísticas</h3>
+            
+            <div class="grid grid-cols-2 gap-4 text-center">
+                <div style="background: #f0fdf4; padding: 16px; border-radius: 12px;">
+                    <div class="text-2xl font-bold text-green-600" id="total-cards">0</div>
+                    <div class="text-xs text-gray-600 mt-1">Cartões</div>
+                </div>
+                <div style="background: #fef3c7; padding: 16px; border-radius: 12px;">
+                    <div class="text-2xl font-bold text-yellow-600" id="account-age">0d</div>
+                    <div class="text-xs text-gray-600 mt-1">Conta ativa</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Settings -->
+        <div class="profile-card fade-in" style="animation-delay: 0.2s;">
+            <h3 class="text-sm font-semibold text-gray-500 mb-3 uppercase">Definições</h3>
+            
+            <div class="profile-item" onclick="showComingSoon()">
+                <div class="profile-icon" style="background: #f3f4f6; color: #6b7280;">
+                    <i class="fas fa-bell"></i>
+                </div>
+                <div style="flex: 1;">
+                    <div class="font-semibold text-gray-800">Notificações</div>
+                    <div class="text-sm text-gray-500">Gerir preferências</div>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+            </div>
+            
+            <div class="profile-item" onclick="showComingSoon()">
+                <div class="profile-icon" style="background: #f3f4f6; color: #6b7280;">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <div style="flex: 1;">
+                    <div class="font-semibold text-gray-800">Segurança</div>
+                    <div class="text-sm text-gray-500">Alterar password</div>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+            </div>
+            
+            <div class="profile-item" onclick="showComingSoon()">
+                <div class="profile-icon" style="background: #f3f4f6; color: #6b7280;">
+                    <i class="fas fa-question-circle"></i>
+                </div>
+                <div style="flex: 1;">
+                    <div class="font-semibold text-gray-800">Ajuda & Suporte</div>
+                    <div class="text-sm text-gray-500">Centro de ajuda</div>
+                </div>
+                <i class="fas fa-chevron-right text-gray-400"></i>
+            </div>
+        </div>
+        
+        <!-- Danger Zone -->
+        <div class="profile-card fade-in" style="animation-delay: 0.3s;">
+            <div class="profile-item" onclick="logout()" style="color: #dc2626;">
+                <div class="profile-icon" style="background: #fee2e2; color: #dc2626;">
+                    <i class="fas fa-sign-out-alt"></i>
+                </div>
+                <div style="flex: 1;">
+                    <div class="font-semibold">Terminar Sessão</div>
+                </div>
+                <i class="fas fa-chevron-right text-red-400"></i>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="text-center text-gray-500 text-sm mt-8 mb-4">
+            <p>BioTrust v1.0</p>
+            <p class="text-xs mt-2">TecStorm '26 Hackathon</p>
+        </div>
+    </div>
+    
+    <!-- Bottom Navigation -->
+    <div class="bottom-nav">
+        <div class="flex">
+            <div class="nav-item" onclick="window.location.href='/static/dashboard.html'">
+                <i class="fas fa-home text-2xl mb-1"></i>
+                <p class="text-xs font-medium">Início</p>
+            </div>
+            <div class="nav-item" onclick="window.location.href='/static/cards.html'">
+                <i class="fas fa-credit-card text-2xl mb-1"></i>
+                <p class="text-xs font-medium">Cartões</p>
+            </div>
+            <div class="nav-item active">
+                <i class="fas fa-user text-2xl mb-1"></i>
+                <p class="text-xs font-medium">Perfil</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentUser = null;
+        
+        // Initialize
+        window.addEventListener('DOMContentLoaded', async () => {
+            const userData = localStorage.getItem('user');
+            if (!userData) {
+                window.location.href = '/web';
+                return;
+            }
+            
+            currentUser = JSON.parse(userData);
+            displayProfile();
+            await loadUserStats();
+        });
+        
+        // Display profile
+        function displayProfile() {
+            const nameParts = currentUser.name.split(' ');
+            const initials = nameParts.map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            
+            document.getElementById('user-initials').textContent = initials;
+            document.getElementById('user-name').textContent = currentUser.name;
+            document.getElementById('user-email').textContent = currentUser.email;
+            
+            document.getElementById('profile-name').textContent = currentUser.name;
+            document.getElementById('profile-email').textContent = currentUser.email;
+            document.getElementById('profile-phone').textContent = currentUser.phone || 'Não definido';
+        }
+        
+        // Load user stats
+        async function loadUserStats() {
+            try {
+                // Get cards count
+                const cardsResponse = await fetch(`/api/users/${currentUser._id}/cards`);
+                const cardsData = await cardsResponse.json();
+                const cardsCount = cardsData.success ? (cardsData.cards?.length || 0) : 0;
+                
+                document.getElementById('total-cards').textContent = cardsCount;
+                
+                // Calculate account age
+                const accountCreated = currentUser.created_at ? new Date(currentUser.created_at) : new Date();
+                const today = new Date();
+                const daysDiff = Math.floor((today - accountCreated) / (1000 * 60 * 60 * 24));
+                
+                document.getElementById('account-age').textContent = daysDiff > 0 ? `${daysDiff}d` : 'Hoje';
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        // Logout
+        function logout() {
+            if (confirm('Tem certeza que deseja terminar a sessão?')) {
+                localStorage.clear();
+                window.location.href = '/web';
+            }
+        }
+        
+        // Go back
+        function goBack() {
+            window.location.href = '/static/dashboard.html';
+        }
+        
+        // Coming soon
+        function showComingSoon() {
+            alert('Funcionalidade em desenvolvimento! 🚀');
+        }
+    </script>
+</body>
+</html>

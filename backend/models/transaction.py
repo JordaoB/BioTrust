@@ -39,7 +39,7 @@ class MerchantInfo(BaseModel):
     merchant_id: Optional[str] = None
     name: str
     category: str  # restaurant, pharmacy, supermarket, etc
-    location: Dict[str, float]  # {"lat": 38.7223, "lon": -9.1393}
+    location: Dict[str, Any]  # {"lat": 38.7223, "lon": -9.1393, "city": "Lisboa"}
     city: str
 
 
@@ -64,9 +64,10 @@ class TransactionBase(BaseModel):
 class TransactionCreate(TransactionBase):
     """Transaction creation schema"""
     user_id: str
-    card_id: str
+    card_id: Optional[str] = None  # Optional - will use default card if not provided
     merchant_id: Optional[str] = None
-    user_location: Dict[str, float]  # Current user location {"lat": x, "lon": y}
+    recipient_email: Optional[str] = None  # For transfers
+    user_location: Dict[str, Any]  # Current user location {"lat": x, "lon": y, "city": "Lisboa"}
 
 
 class TransactionInDB(TransactionBase):
@@ -77,7 +78,7 @@ class TransactionInDB(TransactionBase):
     merchant: MerchantInfo
     
     # User location at transaction time
-    user_location: Dict[str, float]
+    user_location: Dict[str, Any]  # {"lat", "lon", "city"}
     distance_from_home_km: Optional[float] = None
     distance_from_merchant_km: Optional[float] = None
     
@@ -113,7 +114,7 @@ class Transaction(TransactionBase):
     card_id: str
     merchant_id: Optional[str] = None
     merchant_info: Optional[MerchantInfo] = None
-    user_location: Dict[str, float]
+    user_location: Dict[str, Any]  # {"lat", "lon", "city"}
     distance_from_home_km: float
     distance_from_merchant_km: Optional[float] = None
     risk_score: float

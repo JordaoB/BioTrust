@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cartões - BioTrust</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --mbway-green: #00A859;
+            --mbway-dark-green: #005A32;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f3f4f6;
+            min-height: 100vh;
+            padding-bottom: 80px;
+        }
+        
+        .header-gradient {
+            background: linear-gradient(135deg, var(--mbway-green) 0%, var(--mbway-dark-green) 100%);
+            padding: 24px 20px;
+            color: white;
+        }
+        
+        .payment-card {
+            width: 100%;
+            height: 200px;
+            border-radius: 16px;
+            padding: 24px;
+            color: white;
+            position: relative;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+        }
+        
+        .payment-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.25);
+        }
+        
+        .card-visa {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+        }
+        
+        .card-mastercard {
+            background: linear-gradient(135deg, #991b1b 0%, #ef4444 100%);
+        }
+        
+        .card-amex {
+            background: linear-gradient(135deg, #064e3b 0%, #10b981 100%);
+        }
+        
+        .back-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .back-button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .add-card-btn {
+            background: white;
+            border: 2px dashed #d1d5db;
+            border-radius: 16px;
+            height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 20px;
+        }
+        
+        .add-card-btn:hover {
+            border-color: var(--mbway-green);
+            background: #f0fdf4;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            align-items: flex-end;
+        }
+        
+        .modal.show {
+            display: flex;
+            animation: fadeIn 0.2s;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 24px 24px 0 0;
+            padding: 24px;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header-gradient">
+        <div class="flex items-center justify-between mb-4">
+            <div class="back-button" onclick="goBack()">
+                <i class="fas fa-arrow-left"></i>
+            </div>
+            <h1 class="text-2xl font-bold">Os Meus Cartões</h1>
+            <div style="width: 40px;"></div>
+        </div>
+    </div>
+    
+    <!-- Content -->
+    <div style="padding: 20px; max-width: 600px; margin: 0 auto;">
+        <!-- Cards List -->
+        <div id="cards-list">
+            <!-- Cards will be loaded here -->
+        </div>
+        
+        <!-- Add Card Button -->
+        <div class="add-card-btn" onclick="openAddCardModal()">
+            <i class="fas fa-plus text-4xl text-gray-400 mb-2"></i>
+            <p class="text-gray-600 font-semibold">Adicionar Cartão</p>
+        </div>
+        
+        <!-- Empty State -->
+        <div id="empty-state" style="display: none; text-align: center; padding: 60px 20px;">
+            <i class="fas fa-credit-card" style="font-size: 80px; color: #d1d5db; margin-bottom: 20px;"></i>
+            <h3 class="text-xl font-bold text-gray-700 mb-2">Sem cartões</h3>
+            <p class="text-gray-500 mb-6">Adicione um cartão para começar</p>
+            <button onclick="openAddCardModal()" class="px-6 py-3 rounded-full font-semibold text-white" style="background: var(--mbway-green);">
+                <i class="fas fa-plus mr-2"></i>Adicionar Cartão
+            </button>
+        </div>
+    </div>
+    
+    <!-- Add Card Modal -->
+    <div id="add-card-modal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Adicionar Cartão</h2>
+                <button onclick="closeAddCardModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            
+            <form id="add-card-form" onsubmit="handleAddCard(event)">
+                <div class="mb-4">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Número do Cartão</label>
+                    <input 
+                        type="text" 
+                        id="card-number" 
+                        maxlength="19"
+                        placeholder="1234 5678 9012 3456" 
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                    >
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Nome do Titular</label>
+                    <input 
+                        type="text" 
+                        id="card-holder" 
+                        placeholder="JOÃO SILVA" 
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                        style="text-transform: uppercase;"
+                        required
+                    >
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Mês</label>
+                        <select 
+                            id="card-month" 
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                            required
+                        >
+                            <option value="">Mês</option>
+                            ${Array.from({length: 12}, (_, i) => `<option value="${i + 1}">${String(i + 1).padStart(2, '0')}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Ano</label>
+                        <select 
+                            id="card-year" 
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                            required
+                        >
+                            <option value="">Ano</option>
+                            ${Array.from({length: 10}, (_, i) => {
+                                const year = new Date().getFullYear() + i;
+                                return `<option value="${year}">${year}</option>`;
+                            }).join('')}
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">CVV</label>
+                    <input 
+                        type="text" 
+                        id="card-cvv" 
+                        maxlength="4"
+                        placeholder="123" 
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                    >
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Tipo de Cartão</label>
+                    <select 
+                        id="card-type" 
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                    >
+                        <option value="visa">Visa</option>
+                        <option value="mastercard">Mastercard</option>
+                        <option value="amex">American Express</option>
+                    </select>
+                </div>
+                
+                <button 
+                    type="submit" 
+                    class="w-full py-4 rounded-lg font-bold text-white text-lg"
+                    style="background: var(--mbway-green);"
+                >
+                    Adicionar Cartão
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <script src="/static/js/dashboard.js?v=2"></script>
+    <script>
+        const API_BASE = '';
+        let currentUser = null;
+        let userCards = [];
+        
+        // Initialize
+        window.addEventListener('DOMContentLoaded', async () => {
+            const userData = localStorage.getItem('user');
+            if (!userData) {
+                window.location.href = '/web';
+                return;
+            }
+            
+            currentUser = JSON.parse(userData);
+            await loadCards();
+        });
+        
+        // Load cards
+        async function loadCards() {
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${currentUser._id}/cards`);
+                const data = await response.json();
+                
+                if (data.success && data.cards && data.cards.length > 0) {
+                    userCards = data.cards;
+                    displayCards(data.cards);
+                    document.getElementById('empty-state').style.display = 'none';
+                } else {
+                    document.getElementById('cards-list').innerHTML = '';
+                    document.getElementById('empty-state').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error loading cards:', error);
+                document.getElementById('empty-state').style.display = 'block';
+            }
+        }
+        
+        // Display cards
+        function displayCards(cards) {
+            const list = document.getElementById('cards-list');
+            list.innerHTML = cards.map((card, index) => `
+                <div class="payment-card card-${card.card_type} fade-in">
+                    <div class="flex justify-between items-start mb-8">
+                        <div class="text-sm opacity-90 font-semibold">
+                            ${card.card_type === 'visa' ? 'VISA' : card.card_type === 'mastercard' ? 'MASTERCARD' : 'AMEX'}
+                        </div>
+                        ${card.is_default ? `
+                            <div class="bg-white bg-opacity-20 px-3 py-1 rounded-full text-xs font-semibold">
+                                <i class="fas fa-star mr-1"></i>Principal
+                            </div>
+                        ` : `
+                            <button 
+                                onclick="setDefaultCard(${index})" 
+                                class="bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-1 rounded-full text-xs font-semibold transition"
+                            >
+                                Definir como principal
+                            </button>
+                        `}
+                    </div>
+                    
+                    <div class="mb-6">
+                        <div class="text-2xl font-mono tracking-wider">
+                            ${card.masked_number || `**** **** **** ${card.last_four}`}
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-between items-end">
+                        <div>
+                            <div class="text-xs opacity-75 mb-1">Titular</div>
+                            <div class="text-sm font-semibold">${card.card_holder}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs opacity-75 mb-1">Validade</div>
+                            <div class="text-sm font-semibold">${card.expiry}</div>
+                        </div>
+                    </div>
+                    
+                    ${!card.is_default ? `
+                        <button 
+                            onclick="deleteCard(${index})" 
+                            class="absolute bottom-4 right-4 text-white bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-2 rounded-full flex items-center gap-2 transition"
+                        >
+                            <i class="fas fa-trash text-sm"></i>
+                            <span class="text-xs font-semibold">Remover</span>
+                        </button>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+        
+        // Set default card
+        async function setDefaultCard(cardIndex) {
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${currentUser._id}/cards/${cardIndex}/set-default`, {
+                    method: 'PUT'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    showNotification('Cartão definido como principal!', 'success');
+                    await loadCards();
+                } else {
+                    throw new Error(data.detail || 'Erro ao definir cartão');
+                }
+            } catch (error) {
+                showNotification(error.message, 'error');
+            }
+        }
+        
+        // Delete card
+        async function deleteCard(cardIndex) {
+            if (!confirm('Tem certeza que deseja remover este cartão?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${currentUser._id}/cards/${cardIndex}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    showNotification('Cartão removido com sucesso!', 'success');
+                    await loadCards();
+                } else {
+                    throw new Error(data.detail || 'Erro ao remover cartão');
+                }
+            } catch (error) {
+                showNotification(error.message, 'error');
+            }
+        }
+        
+        // Handle add card
+        async function handleAddCard(event) {
+            event.preventDefault();
+            
+            const cardNumber = document.getElementById('card-number').value.replace(/\s/g, '');
+            const cardHolder = document.getElementById('card-holder').value;
+            const cardMonth = parseInt(document.getElementById('card-month').value);
+            const cardYear = parseInt(document.getElementById('card-year').value);
+            const cardCvv = document.getElementById('card-cvv').value;
+            const cardType = document.getElementById('card-type').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${currentUser._id}/cards`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        card_number: cardNumber,
+                        card_holder: cardHolder,
+                        expiry_month: cardMonth,
+                        expiry_year: cardYear,
+                        cvv: cardCvv,
+                        card_type: cardType,
+                        is_default: userCards.length === 0
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    closeAddCardModal();
+                    showNotification('Cartão adicionado com sucesso!', 'success');
+                    await loadCards();
+                    event.target.reset();
+                } else {
+                    throw new Error(data.detail || 'Erro ao adicionar cartão');
+                }
+            } catch (error) {
+                showNotification(error.message, 'error');
+            }
+        }
+        
+        // Modal functions
+        function openAddCardModal() {
+            document.getElementById('add-card-modal').classList.add('show');
+        }
+        
+        function closeAddCardModal() {
+            document.getElementById('add-card-modal').classList.remove('show');
+        }
+        
+        // Go back
+        function goBack() {
+            window.location.href = '/static/dashboard.html';
+        }
+        
+        // Auto-format card number
+        document.addEventListener('DOMContentLoaded', () => {
+            const cardNumberInput = document.getElementById('card-number');
+            if (cardNumberInput) {
+                cardNumberInput.addEventListener('input', (e) => {
+                    let value = e.target.value.replace(/\s/g, '');
+                    let formattedValue = value.match(/.{1,4}/g)?.join(' ') || value;
+                    e.target.value = formattedValue;
+                });
+            }
+        });
+    </script>
+</body>
+</html>

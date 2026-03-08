@@ -83,54 +83,50 @@ async def seed_database():
         # Prepare user document
         cards_data = user_data.pop("cards", [])
         
+        # Process cards to store inline
+        inline_cards = []
+        for card_data in cards_data:
+            inline_card = {
+                "card_holder": card_data["card_holder"],
+                "card_type": card_data["card_type"],
+                "card_number": card_data["card_number"],
+                "cvv": card_data["cvv"],
+                "expiry_month": card_data["expiry_month"],
+                "expiry_year": card_data["expiry_year"],
+                "is_default": card_data["is_default"],
+                "balance": card_data.get("balance", 1000.0),
+                "daily_limit": card_data.get("daily_limit", 5000.0),
+                "max_transaction": card_data.get("max_transaction", 2000.0),
+                "daily_spent": card_data.get("daily_spent", 0.0),
+                "last_reset": datetime.utcnow().date().isoformat(),
+                "added_at": datetime.utcnow()
+            }
+            inline_cards.append(inline_card)
+        
         user = {
             **user_data,
-            "hashed_password": hash_password(user_data.pop("password")),
-            "created_at": datetime.utcnow(),
+            "password_hash": hash_password(user_data.pop("password")),
+            "cards": inline_cards,  # Store cards inline
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
             "transactions_today": 0,
             "failed_transactions_last_week": 0,
             "location_history": [],
             "last_transaction_location": None,
             "last_transaction_at": None,
-            "card_ids": [],
             "liveness_verifications_count": 0
         }
         
-        # Insert user
+        # Insert user with inline cards
         user_result = await db.users.insert_one(user)
         user_id = str(user_result.inserted_id)
         
-        print(f"   ✅ Created user: {user['name']} ({user['email']})")
+        print(f"   ✅ Created user: {user_data['name']} ({user_data['email']})")
         
-        # Create cards for this user
-        card_ids = []
-        for card_data in cards_data:
-            card = {
-                "user_id": user_id,
-                "card_holder": card_data["card_holder"],
-                "card_type": card_data["card_type"],
-                "last_four": card_data["card_number"][-4:],
-                "encrypted_number": encrypt_card_number(card_data["card_number"]),
-                "cvv_hash": hash_cvv(card_data["cvv"]),
-                "expiry_month": card_data["expiry_month"],
-                "expiry_year": card_data["expiry_year"],
-                "is_default": card_data["is_default"],
-                "created_at": datetime.utcnow(),
-                "last_used_at": None,
-                "is_active": True
-            }
-            
-            card_result = await db.cards.insert_one(card)
-            card_ids.append(str(card_result.inserted_id))
-            
+        # Print card info
+        for card in inline_cards:
             card_type_emoji = {"visa": "💳", "mastercard": "💳", "amex": "💎"}
-            print(f"      {card_type_emoji.get(card['card_type'], '💳')} Card: **** {card['last_four']} ({card['card_type'].upper()})")
-        
-        # Update user with card IDs
-        await db.users.update_one(
-            {"_id": user_result.inserted_id},
-            {"$set": {"card_ids": card_ids}}
-        )
+            print(f"      {card_type_emoji.get(card['card_type'], '💳')} Card: **** {card['card_number'][-4:]} ({card['card_type'].upper()}) - €{card['balance']:.2f}")
         
         print()
     

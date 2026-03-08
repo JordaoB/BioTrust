@@ -5,6 +5,7 @@ Manage user accounts and profiles
 
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
+from datetime import datetime
 from backend.database import get_database
 from backend.models.user import User, UserCreate
 import hashlib
@@ -24,7 +25,13 @@ router = APIRouter()
 @router.get("/{user_id}", response_model=User)
 async def get_user(user_id: str, db=Depends(get_database)):
     """Get user by ID"""
-    user = await db.users.find_one({"_id": user_id})
+    try:
+        # Convert string to ObjectId if valid
+        user_id_obj = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
+        user = await db.users.find_one({"_id": user_id_obj})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid user ID format: {str(e)}")
+    
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return serialize_doc(user)
@@ -85,44 +92,63 @@ async def create_user(user_data: UserCreate, db=Depends(get_database)):
 @router.get("/{user_id}/cards")
 async def get_user_cards(user_id: str, db=Depends(get_database)):
     """Get all cards for a user"""
+    # Convert string to ObjectId if valid
+    user_id_obj = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
+    
     # Primeiro tenta buscar da coleção separada de cartões
     cards = await db.cards.find({"user_id": user_id}).to_list(length=100)
     
     # Se não encontrar, busca os cartões inline do documento do utilizador
     if not cards:
-        user = await db.users.find_one({"_id": user_id})
+        user = await db.users.find_one({"_id": user_id_obj})
         if user and "cards" in user:
             # Converte cartões inline para o formato esperado
             inline_cards = user["cards"]
-            return [
-                {
-                    "_id": f"{user_id}_card_{i}",  # ID fictício
-                    "card_type": card["card_type"],
-                    "last_four": card["card_number"][-4:],  # Extrai últimos 4 dígitos
-                    "card_holder": card.get("card_holder", "N/A"),
-                    "expiry_month": card["expiry_month"],
-                    "expiry_year": card["expiry_year"],
-                    "is_default": card.get("is_default", False),
-                    "is_active": True
-                }
-                for i, card in enumerate(inline_cards)
-            ]
-        return []
+            today = datetime.utcnow().date().isoformat()
+            return {
+                "success": True,
+                "cards": [
+                    {
+                        "_id": f"{user_id}_card_{i}",  # ID fictício
+                        "card_type": card["card_type"],
+                        "card_number": card["card_number"],  # Full number for frontend
+                        "masked_number": f"**** **** **** {card['card_number'][-4:]}",
+                        "last_four": card["card_number"][-4:],
+                        "card_holder": card.get("card_holder", "N/A"),
+                        "expiry_month": card["expiry_month"],
+                        "expiry_year": card["expiry_year"],
+                        "expiry": f"{card['expiry_month']:02d}/{str(card['expiry_year'])[-2:]}",
+                        "is_default": card.get("is_default", False),
+                        "is_active": True,
+                        "balance": card.get("balance", 0.0),
+                        "daily_limit": card.get("daily_limit", 5000.0),
+                        "max_transaction": card.get("max_transaction", 2000.0),
+                        "daily_spent": card.get("daily_spent", 0.0) if card.get("last_reset") == today else 0.0
+                    }
+                    for i, card in enumerate(inline_cards)
+                ]
+            }
+        return {"success": True, "cards": []}
     
     # Retorna cartões da coleção separada (formato seguro)
-    return [
-        {
-            "_id": str(card["_id"]),
-            "card_type": card["card_type"],
-            "last_four": card["last_four"],
-            "card_holder": card.get("card_holder", "N/A"),
-            "expiry_month": card["expiry_month"],
-            "expiry_year": card["expiry_year"],
-            "is_default": card["is_default"],
-            "is_active": card["is_active"]
-        }
-        for card in cards
-    ]
+    return {
+        "success": True,
+        "cards": [
+            {
+                "_id": str(card["_id"]),
+                "card_type": card["card_type"],
+                "masked_number": f"**** **** **** {card['last_four']}",
+                "last_four": card["last_four"],
+                "card_holder": card.get("card_holder", "N/A"),
+                "expiry_month": card["expiry_month"],
+                "expiry_year": card["expiry_year"],
+                "expiry": f"{card['expiry_month']:02d}/{str(card['expiry_year'])[-2:]}",
+                "is_default": card["is_default"],
+                "is_active": card["is_active"]
+            }
+            for card in cards
+        ]
+    }
 
 
 @router.get("/{user_id}/transactions")
@@ -133,9 +159,37 @@ async def get_user_transactions(
     db=Depends(get_database)
 ):
     """Get transaction history for a user"""
+    # No need to convert user_id to ObjectId here because transactions store it as string
     cursor = db.transactions.find(
         {"user_id": user_id}
     ).sort("created_at", -1).skip(skip).limit(limit)
     
     transactions = await cursor.to_list(length=limit)
     return [serialize_doc(tx) for tx in transactions]
+
+
+@router.get("/{user_id}/contacts")
+async def get_contacts(user_id: str, db=Depends(get_database)):
+    """
+    Get all registered users as contacts (except current user)
+    Returns minimal info for contact selection: name, email, phone
+    """
+    # Convert string to ObjectId if valid
+    user_id_obj = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
+    
+    # Get all users except current user
+    cursor = db.users.find({"_id": {"$ne": user_id_obj}})
+    users = await cursor.to_list(length=1000)
+    
+    # Return minimal contact info
+    contacts = []
+    for user in users:
+        contacts.append({
+            "_id": str(user["_id"]),
+            "name": user["name"],
+            "email": user["email"],
+            "phone": user.get("phone", ""),
+            "initials": "".join([n[0].upper() for n in user["name"].split()[:2]])  # Ex: "João Silva" -> "JS"
+        })
+    
+    return {"success": True, "contacts": contacts}

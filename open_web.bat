@@ -10,10 +10,10 @@ echo.
 echo Starting browser...
 echo.
 
-start http://localhost:8000/web
+start http://localhost:8000/static/login.html
 
 echo.
 echo Browser opened! If the API is not running, use:
-echo    python -m uvicorn backend.main:app --reload
+echo    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 echo.
 pause

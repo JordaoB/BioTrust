@@ -59,20 +59,82 @@ async def create_transaction(
     """
     try:
         # Fetch user
-        user = await db.users.find_one({"_id": ObjectId(transaction_data.user_id) if ObjectId.is_valid(transaction_data.user_id) else transaction_data.user_id})
+        user_id_obj = ObjectId(transaction_data.user_id) if ObjectId.is_valid(transaction_data.user_id) else transaction_data.user_id
+        user = await db.users.find_one({"_id": user_id_obj})
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise HTTPException(status_code=404, detail=f"User not found: {transaction_data.user_id}")
         
-        # Fetch card
-        card = await db.cards.find_one({"_id": ObjectId(transaction_data.card_id) if ObjectId.is_valid(transaction_data.card_id) else transaction_data.card_id})
+        # Get card from user's inline cards array (cards are stored in user document)
+        user_cards = user.get("cards", [])
+        card = None
+        
+        # If card_id provided, try to match it (or just use default card)
+        if transaction_data.card_id:
+            # Try to find card by matching some identifier, or just use first/default
+            for c in user_cards:
+                if c.get("is_default", False):
+                    card = c
+                    break
+            if not card and user_cards:
+                card = user_cards[0]  # Use first card if no default
+        else:
+            # No card_id provided, use default or first card
+            for c in user_cards:
+                if c.get("is_default", False):
+                    card = c
+                    break
+            if not card and user_cards:
+                card = user_cards[0]
+        
         if not card:
-            raise HTTPException(status_code=404, detail="Card not found")
+            raise HTTPException(status_code=404, detail="No cards found for user. Please add a card first.")
         
-        if card["user_id"] != transaction_data.user_id:
-            raise HTTPException(status_code=403, detail="Card does not belong to user")
+        # VALIDATE CARD BALANCE AND LIMITS
+        card_balance = card.get("balance", 0.0)
+        daily_spent = card.get("daily_spent", 0.0)
+        daily_limit = card.get("daily_limit", 5000.0)
+        max_transaction = card.get("max_transaction", 2000.0)
+        last_reset = card.get("last_reset", datetime.utcnow().date().isoformat())
         
-        if not card["is_active"]:
-            raise HTTPException(status_code=400, detail="Card is not active")
+        # Reset daily spent if it's a new day
+        today = datetime.utcnow().date().isoformat()
+        if last_reset != today:
+            daily_spent = 0.0
+            # Update card's daily_spent and last_reset
+            card_index = user_cards.index(card)
+            await db.users.update_one(
+                {"_id": user_id_obj},
+                {
+                    "$set": {
+                        f"cards.{card_index}.daily_spent": 0.0,
+                        f"cards.{card_index}.last_reset": today
+                    }
+                }
+            )
+        
+        # Check if card has sufficient balance
+        if card_balance < transaction_data.amount:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Saldo insuficiente. Disponível: €{card_balance:.2f}, Necessário: €{transaction_data.amount:.2f}"
+            )
+        
+        # Check if transaction exceeds max per transaction
+        if transaction_data.amount > max_transaction:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Transação excede o limite máximo de €{max_transaction:.2f} por transação"
+            )
+        
+        # Check if transaction would exceed daily limit
+        if (daily_spent + transaction_data.amount) > daily_limit:
+            remaining = daily_limit - daily_spent
+            raise HTTPException(
+                status_code=400,
+                detail=f"Limite diário excedido. Disponível hoje: €{remaining:.2f}"
+            )
+        
+        # Card is active by default since we don't have is_active field in inline cards
         
         # Fetch merchant if provided
         merchant = None
@@ -158,6 +220,22 @@ async def create_transaction(
         }
         
         result = await db.transactions.insert_one(transaction_dict)
+        
+        # If transaction is approved immediately (low risk), deduct from card balance
+        if transaction_dict["status"] == TransactionStatus.APPROVED:
+            card_index = user_cards.index(card)
+            await db.users.update_one(
+                {"_id": user_id_obj},
+                {
+                    "$inc": {
+                        f"cards.{card_index}.balance": -transaction_data.amount,
+                        f"cards.{card_index}.daily_spent": transaction_data.amount
+                    },
+                    "$set": {
+                        f"cards.{card_index}.last_reset": today
+                    }
+                }
+            )
         
         # Update user stats
         await db.users.update_one(
@@ -246,6 +324,30 @@ async def update_transaction_liveness(
             }
         }
     )
+    
+    # If liveness was successful, deduct from card balance
+    if liveness_success:
+        user_id_obj = ObjectId(transaction["user_id"]) if ObjectId.is_valid(transaction["user_id"]) else transaction["user_id"]
+        user = await db.users.find_one({"_id": user_id_obj})
+        if user:
+            user_cards = user.get("cards", [])
+            # Find the card used in transaction
+            for idx, card in enumerate(user_cards):
+                if card.get("is_default", False):  # Find default card
+                    today = datetime.utcnow().date().isoformat()
+                    await db.users.update_one(
+                        {"_id": user_id_obj},
+                        {
+                            "$inc": {
+                                f"cards.{idx}.balance": -transaction["amount"],
+                                f"cards.{idx}.daily_spent": transaction["amount"]
+                            },
+                            "$set": {
+                                f"cards.{idx}.last_reset": today
+                            }
+                        }
+                    )
+                    break
     
     # Update user liveness count
     await db.users.update_one(

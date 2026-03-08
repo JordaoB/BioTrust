@@ -4,8 +4,8 @@ BioTrust - Advanced Liveness Detector V3
 ANTI-SPOOFING SYSTEM WITH RANDOMIZED CHALLENGES
 
 Features:
-- 6 types of challenges (blink, smile, mouth_open, turn_left, turn_right, eyebrows_up)
-- Randomized sequence (4-5 challenges per session)
+- 5 types of challenges (blink, smile, turn_left, turn_right, eyebrows_up)
+- Randomized sequence (3-5 challenges per session)
 - Multi-layer video detection (texture, moiré, color variance, heart rate)
 - 60% rPPG confidence requirement
 - Natural movement variance analysis
@@ -52,11 +52,6 @@ class LivenessDetectorV3:
                 "required_count": 1,
                 "timeout_frames": 300  # 10 seconds
             },
-            "mouth_open": {
-                "name": "Open mouth wide",
-                "required_count": 1,
-                "timeout_frames": 300  # 10 seconds
-            },
             "turn_left": {
                 "name": "Turn head LEFT",
                 "required_count": 1,
@@ -88,9 +83,9 @@ class LivenessDetectorV3:
         self.MAR_THRESHOLD = 0.60  # Mouth Aspect Ratio for mouth open (reduced)
         self.SMILE_MOUTH_WIDTH_RATIO = 1.25  # Mouth width increase when smiling (reduced)
         self.EYEBROW_DISTANCE_THRESHOLD = 35  # Eyebrow-eye distance when raised (reduced)
-        self.HEAD_TURN_RATIO_LEFT = 2.2  # Nose-eye ratio for left turn
-        self.HEAD_TURN_RATIO_RIGHT = 0.4  # Nose-eye ratio for right turn
-        self.HEAD_FRONTAL_RANGE = (0.82, 1.18)  # Acceptable frontal range
+        self.HEAD_TURN_RATIO_LEFT = 1.25  # Nose-eye ratio for left turn (MUITO SENSÍVEL)
+        self.HEAD_TURN_RATIO_RIGHT = 0.75  # Nose-eye ratio for right turn (MUITO SENSÍVEL)
+        self.HEAD_FRONTAL_RANGE = (0.85, 1.15)  # Acceptable frontal range (mais apertado)
         self.CONSEC_FRAMES = 2  # Consecutive frames for blink confirmation
         self.CHALLENGE_ARM_FRAMES = 12  # Require ~0.4s stable frontal pose before each challenge
         
@@ -634,11 +629,6 @@ class LivenessDetectorV3:
                 self.challenge_counter += 1
                 if self.challenge_counter >= challenge_info["required_count"] * 10:
                     challenge_satisfied = True
-        elif current_challenge == "mouth_open":
-            if is_mouth_open:
-                self.challenge_counter += 1
-                if self.challenge_counter >= challenge_info["required_count"] * 8:
-                    challenge_satisfied = True
         elif current_challenge == "turn_left":
             if is_left:
                 self.challenge_counter += 1
@@ -1023,14 +1013,7 @@ class LivenessDetectorV3:
                                     wrong_action_detected = True
                                     wrong_action_name = "VIROU ESQUERDA (esperado: DIREITA)"
                                 
-                                # CONFUSÃO FACIAL: Smile vs Mouth Open (muito distintos)
-                                elif current_challenge == "smile" and is_mouth_open and not is_smiling:
-                                    wrong_action_detected = True
-                                    wrong_action_name = "ABRIU A BOCA (esperado: SORRIR)"
-                                
-                                elif current_challenge == "mouth_open" and is_smiling and not is_mouth_open:
-                                    wrong_action_detected = True
-                                    wrong_action_name = "SORRIU (esperado: ABRIR BOCA)"
+                                # Confusão facial removida (mouth_open removido)
                             
                             # ========== PROCESSAR ERRO DETECTADO ==========
                             if wrong_action_detected:
@@ -1085,7 +1068,7 @@ class LivenessDetectorV3:
                                           0.7, (0, 200, 255), 2, cv2.LINE_AA)
                                 continue
 
-                            if current_challenge in ("blink", "smile", "mouth_open", "eyebrows_up") and not face_frontal:
+                            if current_challenge in ("blink", "smile", "eyebrows_up") and not face_frontal:
                                 cv2.putText(frame, "LOOK STRAIGHT AT CAMERA",
                                           (20, 90), cv2.FONT_HERSHEY_SIMPLEX,
                                           0.7, (0, 0, 255), 2, cv2.LINE_AA)
@@ -1112,17 +1095,7 @@ class LivenessDetectorV3:
                                     if self.challenge_counter >= 15:  # Hold for 0.5 seconds
                                         challenge_satisfied = True
                             
-                            elif current_challenge == "mouth_open":
-                                if face_frontal and movement_ok:
-                                    # Arm only after a closed-mouth state to avoid immediate false positives.
-                                    if not is_mouth_open:
-                                        self.mouth_open_armed = True
-                                        self.challenge_counter = 0
-                                    elif self.mouth_open_armed:
-                                        self.challenge_counter += 1
-                                        if self.challenge_counter >= 8:
-                                            challenge_satisfied = True
-                                else:
+                            elif current_challenge == "turn_left":
                                     self.challenge_counter = 0
                             
                             elif current_challenge == "turn_left":

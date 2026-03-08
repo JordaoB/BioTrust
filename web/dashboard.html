@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioTrust - Dashboard</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --mbway-green: #00A859;
+            --mbway-dark: #005A32;
+            --mbway-light: #E8F5E9;
+        }
+        
+        body {
+            background: #F5F5F5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding-bottom: 80px; /* Space for bottom nav */
+        }
+        
+        .header-gradient {
+            background: linear-gradient(135deg, var(--mbway-green) 0%, var(--mbway-dark) 100%);
+        }
+        
+        .card-slider {
+            display: flex;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            gap: 16px;
+            padding: 0 20px;
+            scrollbar-width: none;
+        }
+        
+        .card-slider::-webkit-scrollbar {
+            display: none;
+        }
+        
+        .payment-card {
+            min-width: 320px;
+            height: 240px;
+            scroll-snap-align: center;
+            border-radius: 20px;
+            padding: 24px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card-visa {
+            background: linear-gradient(135deg, #1A1F71 0%, #0D47A1 100%);
+        }
+        
+        .card-mastercard {
+            background: linear-gradient(135deg, #EB001B 0%, #F79E1B 100%);
+        }
+        
+        .card-amex {
+            background: linear-gradient(135deg, #006FCF 0%, #003E7E 100%);
+        }
+        
+        .action-btn {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 50;
+        }
+        
+        .nav-item {
+            flex: 1;
+            text-align: center;
+            padding: 12px;
+            color: #757575;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        
+        .nav-item.active {
+            color: var(--mbway-green);
+        }
+        
+        .transaction-item {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 24px;
+            padding: 24px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: modalSlideUp 0.3s ease-out;
+        }
+        
+        @keyframes modalSlideUp {
+            from { opacity: 0; transform: translateY(50px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header with Balance -->
+    <div class="header-gradient text-white p-6 pb-8">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <p class="text-sm opacity-90">Olá,</p>
+                <h1 class="text-2xl font-bold" id="user-name">---</h1>
+            </div>
+            <button onclick="logout()" class="text-white opacity-90 hover:opacity-100">
+                <i class="fas fa-sign-out-alt text-xl"></i>
+            </button>
+        </div>
+        
+        <div class="text-center">
+            <p class="text-sm opacity-90 mb-2">Saldo Disponível</p>
+            <h2 class="text-4xl font-bold" id="balance">€ 0.00</h2>
+        </div>
+    </div>
+    
+    <!-- Cards Slider -->
+    <div class="mt-6 mb-6">
+        <div class="px-6 mb-4 flex justify-between items-center">
+            <h3 class="text-lg font-semibold text-gray-800">Meus Cartões</h3>
+            <button onclick="openAddCardModal()" class="text-green-600 text-sm font-semibold">
+                <i class="fas fa-plus mr-1"></i> Adicionar
+            </button>
+        </div>
+        
+        <div class="card-slider" id="cards-container">
+            <!-- Cards will be loaded here -->
+            <div class="flex items-center justify-center" style="min-width: 320px">
+                <p class="text-gray-500">Carregando cartões...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Action Buttons -->
+    <div class="px-6 mb-6">
+        <div class="grid grid-cols-3 gap-4">
+            <button onclick="openSendMoneyModal()" class="action-btn">
+                <div class="text-green-600 text-3xl mb-2">
+                    <i class="fas fa-paper-plane"></i>
+                </div>
+                <p class="text-sm font-semibold text-gray-800">Enviar</p>
+            </button>
+            
+            <button onclick="showComingSoon()" class="action-btn">
+                <div class="text-blue-600 text-3xl mb-2">
+                    <i class="fas fa-hand-holding-usd"></i>
+                </div>
+                <p class="text-sm font-semibold text-gray-800">Pedir</p>
+            </button>
+            
+            <button onclick="viewHistory()" class="action-btn">
+                <div class="text-purple-600 text-3xl mb-2">
+                    <i class="fas fa-history"></i>
+                </div>
+                <p class="text-sm font-semibold text-gray-800">Histórico</p>
+            </button>
+        </div>
+    </div>
+    
+    <!-- Recent Transactions -->
+    <div class="px-6 mb-6">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">Transações Recentes</h3>
+        <div id="transactions-container">
+            <p class="text-gray-500 text-center py-8">Nenhuma transação ainda</p>
+        </div>
+    </div>
+    
+    <!-- Bottom Navigation -->
+    <div class="bottom-nav">
+        <div class="flex">
+            <div class="nav-item active" onclick="switchTab('home')">
+                <i class="fas fa-home text-2xl mb-1"></i>
+                <p class="text-xs font-medium">Início</p>
+            </div>
+            <div class="nav-item" onclick="switchTab('cards')">
+                <i class="fas fa-credit-card text-2xl mb-1"></i>
+                <p class="text-xs font-medium">Cartões</p>
+            </div>
+            <div class="nav-item" onclick="switchTab('profile')">
+                <i class="fas fa-user text-2xl mb-1"></i>
+                <p class="text-xs font-medium">Perfil</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Send Money Modal -->
+    <div id="send-money-modal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Enviar Dinheiro</h2>
+                <button onclick="closeSendMoneyModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="send-money-form" onsubmit="handleSendMoney(event)">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-user mr-2"></i>Destinatário
+                    </label>
+                    <select 
+                        id="recipient-select"
+                        class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
+                        required
+                    >
+                        <option value="">Selecione um contacto</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-euro-sign mr-2"></i>Valor
+                    </label>
+                    <input 
+                        type="number" 
+                        id="amount-input"
+                        class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
+                        placeholder="0.00"
+                        step="0.01"
+                        min="0.01"
+                        required
+                    >
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-map-marker-alt mr-2"></i>Localização
+                    </label>
+                    <select 
+                        id="location-select"
+                        class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
+                        required
+                    >
+                        <option value="home">Casa (Lisboa)</option>
+                        <option value="nearby">Proximidade (20-50km)</option>
+                        <option value="far">Longe (200-300km)</option>
+                        <option value="very-far">Muito Longe (500km+)</option>
+                    </select>
+                </div>
+                
+                <button 
+                    type="submit"
+                    class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold transition"
+                >
+                    Enviar
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Add Card Modal -->
+    <div id="add-card-modal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Adicionar Cartão</h2>
+                <button onclick="closeAddCardModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form onsubmit="handleAddCard(event)">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Número do Cartão</label>
+                    <input 
+                        type="text" 
+                        id="card-number"
+                        class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
+                        placeholder="1234 5678 9012 3456"
+                        maxlength="19"
+                        required
+                    >
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Nome no Cartão</label>
+                    <input 
+                        type="text" 
+                        id="card-holder"
+                        class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
+                        placeholder="JOÃO SILVA"
+                        required
+                    >
+                </div>
+                
+                <div class="grid grid-cols-3 gap-4 mb-4">
+                    <div class="col-span-1">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Mês</label>
+                        <input 
+                            type="number" 
+                            id="card-month"
+                            class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
+                            placeholder="12"
+                            min="1"
+                            max="12"
+                            required
+                        >
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Ano</label>
+                        <input 
+                            type="number" 
+                            id="card-year"
+                            class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
+                            placeholder="2028"
+                            min="2026"
+                            max="2040"
+                            required
+                        >
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">CVV</label>
+                        <input 
+                            type="text" 
+                            id="card-cvv"
+                            class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
+                            placeholder="123"
+                            maxlength="4"
+                            required
+                        >
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Tipo de Cartão</label>
+                    <select 
+                        id="card-type"
+                        class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
+                        required
+                    >
+                        <option value="visa">Visa</option>
+                        <option value="mastercard">Mastercard</option>
+                        <option value="amex">American Express</option>
+                    </select>
+                </div>
+                
+                <button 
+                    type="submit"
+                    class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold transition"
+                >
+                    Adicionar Cartão
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="/static/js/dashboard.js?v=1"></script>
+</body>
+</html>

@@ -98,9 +98,11 @@ async def health_check():
     }
 
 # Import and register routes
-from backend.routes import users, merchants, transactions, liveness, liveness_stream
+from backend.routes import users, merchants, transactions, liveness, liveness_stream, auth, cards
 
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
+app.include_router(cards.router, prefix="/api/users", tags=["Cards"])  # Nested under /api/users/{user_id}/cards
 app.include_router(merchants.router, prefix="/api/merchants", tags=["Merchants"])
 app.include_router(transactions.router, prefix="/api/transactions", tags=["Transactions"])
 app.include_router(liveness.router, prefix="/api/liveness", tags=["Liveness Detection"])
