@@ -10,20 +10,27 @@ from bson import ObjectId
 
 
 class PyObjectId(ObjectId):
-    """Custom ObjectId type for Pydantic"""
+    """Custom ObjectId type for Pydantic v2"""
     @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
+        return core_schema.union_schema([
+            core_schema.is_instance_schema(ObjectId),
+            core_schema.no_info_plain_validator_function(
+                cls.validate,
+                serialization=core_schema.plain_serializer_function_ser_schema(
+                    lambda x: str(x)
+                )
+            )
+        ])
 
     @classmethod
     def validate(cls, v):
-        if not ObjectId.is_valid(v):
-            raise ValueError("Invalid ObjectId")
-        return ObjectId(v)
-
-    @classmethod
-    def __modify_schema__(cls, field_schema):
-        field_schema.update(type="string")
+        if isinstance(v, ObjectId):
+            return v
+        if isinstance(v, str) and ObjectId.is_valid(v):
+            return ObjectId(v)
+        raise ValueError("Invalid ObjectId")
 
 
 class Location(BaseModel):
@@ -73,7 +80,7 @@ class UserInDB(UserBase):
     liveness_verifications_count: int = 0
     
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
         arbitrary_types_allowed = True
         json_encoders = {ObjectId: str}
 
@@ -89,4 +96,4 @@ class User(UserBase):
     liveness_verifications_count: int
     
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True

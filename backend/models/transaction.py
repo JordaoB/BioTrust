@@ -46,7 +46,7 @@ class MerchantInfo(BaseModel):
 class LivenessResult(BaseModel):
     """Liveness verification result"""
     success: bool
-    challenges_completed: list
+    challenges_completed: int  # Número de desafios completados (0-5)
     heart_rate: Optional[float] = None
     heart_rate_confidence: Optional[float] = None
     anti_spoofing: Optional[Dict[str, Any]] = None
@@ -65,7 +65,7 @@ class TransactionCreate(TransactionBase):
     """Transaction creation schema"""
     user_id: str
     card_id: str
-    merchant: MerchantInfo
+    merchant_id: Optional[str] = None
     user_location: Dict[str, float]  # Current user location {"lat": x, "lon": y}
 
 
@@ -103,20 +103,30 @@ class TransactionInDB(TransactionBase):
     rejection_reason: Optional[str] = None
     
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class Transaction(TransactionBase):
     """Transaction response schema"""
     id: str = Field(..., alias="_id")
-    merchant: MerchantInfo
-    risk_score: int
+    user_id: str
+    card_id: str
+    merchant_id: Optional[str] = None
+    merchant_info: Optional[MerchantInfo] = None
+    user_location: Dict[str, float]
+    distance_from_home_km: float
+    distance_from_merchant_km: Optional[float] = None
+    risk_score: float
     risk_level: RiskLevel
     status: TransactionStatus
     liveness_required: bool
     liveness_performed: bool
-    approved: bool
+    liveness_result: Optional[LivenessResult] = None
     created_at: datetime
+    updated_at: datetime
+    
+    # Override type field to accept transaction_type from DB
+    type: TransactionType = Field(..., alias="transaction_type")
     
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
