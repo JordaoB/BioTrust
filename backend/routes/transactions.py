@@ -3,7 +3,7 @@ Transactions API Routes
 Create and manage payment transactions with risk analysis
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import List, Optional
 from datetime import datetime
 from backend.database import get_database
@@ -11,6 +11,7 @@ from backend.models.transaction import (
     Transaction, TransactionCreate, TransactionStatus, RiskLevel
 )
 from backend.models.user import Location
+from backend.utils.logger import logger, log_transaction_audit
 from bson import ObjectId
 import sys
 import os
@@ -51,6 +52,7 @@ def calculate_distance(loc1: dict, loc2: dict) -> float:
 @router.post("/", response_model=Transaction, status_code=201)
 async def create_transaction(
     transaction_data: TransactionCreate,
+    request: Request,
     db=Depends(get_database)
 ):
     """
@@ -58,33 +60,41 @@ async def create_transaction(
     Determines if liveness verification is required
     """
     try:
+        logger.info(f"📝 New transaction request | User: {transaction_data.user_id} | Amount: €{transaction_data.amount:.2f} | Merchant: {transaction_data.merchant_id}")
+        
         # Fetch user
         user_id_obj = ObjectId(transaction_data.user_id) if ObjectId.is_valid(transaction_data.user_id) else transaction_data.user_id
         user = await db.users.find_one({"_id": user_id_obj})
         if not user:
+            logger.warning(f"⚠️ User not found: {transaction_data.user_id}")
             raise HTTPException(status_code=404, detail=f"User not found: {transaction_data.user_id}")
         
         # Get card from user's inline cards array (cards are stored in user document)
         user_cards = user.get("cards", [])
         card = None
+        card_index = None
         
-        # If card_id provided, try to match it (or just use default card)
-        if transaction_data.card_id:
-            # Try to find card by matching some identifier, or just use first/default
-            for c in user_cards:
+        # Priority 1: Use card_index if provided (direct array index)
+        if transaction_data.card_index is not None:
+            if 0 <= transaction_data.card_index < len(user_cards):
+                card = user_cards[transaction_data.card_index]
+                card_index = transaction_data.card_index
+            else:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Invalid card index: {transaction_data.card_index}"
+                )
+        # Priority 2: Use default card
+        elif not card:
+            for idx, c in enumerate(user_cards):
                 if c.get("is_default", False):
                     card = c
+                    card_index = idx
                     break
-            if not card and user_cards:
-                card = user_cards[0]  # Use first card if no default
-        else:
-            # No card_id provided, use default or first card
-            for c in user_cards:
-                if c.get("is_default", False):
-                    card = c
-                    break
-            if not card and user_cards:
-                card = user_cards[0]
+        # Priority 3: Use first card
+        if not card and user_cards:
+            card = user_cards[0]
+            card_index = 0
         
         if not card:
             raise HTTPException(status_code=404, detail="No cards found for user. Please add a card first.")
@@ -101,7 +111,6 @@ async def create_transaction(
         if last_reset != today:
             daily_spent = 0.0
             # Update card's daily_spent and last_reset
-            card_index = user_cards.index(card)
             await db.users.update_one(
                 {"_id": user_id_obj},
                 {
@@ -201,6 +210,7 @@ async def create_transaction(
         transaction_dict = {
             "user_id": transaction_data.user_id,
             "card_id": transaction_data.card_id,
+            "card_index": card_index,  # Store card index for later use
             "merchant_id": transaction_data.merchant_id,
             "merchant_info": merchant_info,
             "amount": transaction_data.amount,
@@ -220,10 +230,16 @@ async def create_transaction(
         }
         
         result = await db.transactions.insert_one(transaction_dict)
+        transaction_id = str(result.inserted_id)
+        
+        # Log transaction creation
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent", None)
         
         # If transaction is approved immediately (low risk), deduct from card balance
         if transaction_dict["status"] == TransactionStatus.APPROVED:
-            card_index = user_cards.index(card)
+            logger.success(f"✅ Transaction APPROVED (Low Risk) | ID: {transaction_id} | User: {transaction_data.user_id} | €{transaction_data.amount:.2f}")
+            
             await db.users.update_one(
                 {"_id": user_id_obj},
                 {
@@ -235,6 +251,38 @@ async def create_transaction(
                         f"cards.{card_index}.last_reset": today
                     }
                 }
+            )
+            
+            # Audit log for approved transaction
+            log_transaction_audit(
+                transaction_id=transaction_id,
+                user_id=transaction_data.user_id,
+                amount=transaction_data.amount,
+                merchant_id=transaction_data.merchant_id,
+                status="APPROVED",
+                risk_score=risk_score,
+                risk_level=risk_level.value,
+                liveness_verified=False,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                reason="Low risk - auto-approved"
+            )
+        else:
+            logger.warning(f"⏳ Transaction PENDING (Liveness Required) | ID: {transaction_id} | User: {transaction_data.user_id} | €{transaction_data.amount:.2f} | Risk: {risk_level.value} ({risk_score:.1f}%)")
+            
+            # Audit log for pending transaction
+            log_transaction_audit(
+                transaction_id=transaction_id,
+                user_id=transaction_data.user_id,
+                amount=transaction_data.amount,
+                merchant_id=transaction_data.merchant_id,
+                status="PENDING",
+                risk_score=risk_score,
+                risk_level=risk_level.value,
+                liveness_verified=False,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                reason="Medium/High risk - liveness required"
             )
         
         # Update user stats
@@ -258,9 +306,12 @@ async def create_transaction(
         created_transaction = await db.transactions.find_one({"_id": result.inserted_id})
         return serialize_doc(created_transaction)
         
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         error_detail = f"{str(e)}\n{traceback.format_exc()}"
+        logger.error(f"❌ Transaction creation failed | User: {transaction_data.user_id} | Amount: €{transaction_data.amount:.2f} | Error: {str(e)}")
         raise HTTPException(status_code=500, detail=error_detail)
 
 
@@ -293,6 +344,7 @@ async def get_user_transactions(
 async def update_transaction_liveness(
     transaction_id: str,
     liveness_result: dict,
+    request: Request,
     db=Depends(get_database)
 ):
     """
@@ -303,6 +355,7 @@ async def update_transaction_liveness(
     transaction_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id
     transaction = await db.transactions.find_one({"_id": transaction_obj_id})
     if not transaction:
+        logger.warning(f"⚠️ Liveness update failed: Transaction {transaction_id} not found")
         raise HTTPException(status_code=404, detail="Transaction not found")
     
     if not transaction["liveness_required"]:
@@ -310,7 +363,11 @@ async def update_transaction_liveness(
     
     # Determine final status based on liveness result
     liveness_success = liveness_result.get("success", False)
+    confidence = liveness_result.get("confidence", 0)
+    reason = liveness_result.get("reason", "N/A")
     new_status = TransactionStatus.APPROVED if liveness_success else TransactionStatus.REJECTED
+    
+    logger.info(f"🔐 Liveness verification completed | TX: {transaction_id} | Success: {liveness_success} | Confidence: {confidence:.1f}% | Reason: {reason}")
     
     # Update transaction
     await db.transactions.update_one(
@@ -330,29 +387,50 @@ async def update_transaction_liveness(
         user_id_obj = ObjectId(transaction["user_id"]) if ObjectId.is_valid(transaction["user_id"]) else transaction["user_id"]
         user = await db.users.find_one({"_id": user_id_obj})
         if user:
-            user_cards = user.get("cards", [])
-            # Find the card used in transaction
-            for idx, card in enumerate(user_cards):
-                if card.get("is_default", False):  # Find default card
-                    today = datetime.utcnow().date().isoformat()
-                    await db.users.update_one(
-                        {"_id": user_id_obj},
-                        {
-                            "$inc": {
-                                f"cards.{idx}.balance": -transaction["amount"],
-                                f"cards.{idx}.daily_spent": transaction["amount"]
-                            },
-                            "$set": {
-                                f"cards.{idx}.last_reset": today
-                            }
+            # Use the card_index stored in the transaction
+            card_idx = transaction.get("card_index")
+            if card_idx is not None:
+                today = datetime.utcnow().date().isoformat()
+                await db.users.update_one(
+                    {"_id": user_id_obj},
+                    {
+                        "$inc": {
+                            f"cards.{card_idx}.balance": -transaction["amount"],
+                            f"cards.{card_idx}.daily_spent": transaction["amount"]
+                        },
+                        "$set": {
+                            f"cards.{card_idx}.last_reset": today
                         }
-                    )
-                    break
+                    }
+                )
     
     # Update user liveness count
     await db.users.update_one(
         {"_id": ObjectId(transaction["user_id"]) if ObjectId.is_valid(transaction["user_id"]) else transaction["user_id"]},
         {"$inc": {"liveness_verifications_count": 1}}
+    )
+    
+    # Audit log for liveness update
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent", None)
+    
+    if liveness_success:
+        logger.success(f"✅ Transaction APPROVED (Liveness Passed) | TX: {transaction_id} | User: {transaction['user_id']} | €{transaction['amount']:.2f}")
+    else:
+        logger.error(f"❌ Transaction REJECTED (Liveness Failed) | TX: {transaction_id} | User: {transaction['user_id']} | €{transaction['amount']:.2f} | Reason: {reason}")
+    
+    log_transaction_audit(
+        transaction_id=transaction_id,
+        user_id=transaction["user_id"],
+        amount=transaction["amount"],
+        merchant_id=transaction.get("merchant_id"),
+        status=new_status.value,
+        risk_score=transaction.get("risk_score"),
+        risk_level=transaction.get("risk_level"),
+        liveness_verified=True,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        reason=f"Liveness {('passed' if liveness_success else 'failed')}: {reason}"
     )
     
     # Fetch updated transaction

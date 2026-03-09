@@ -64,7 +64,8 @@ class TransactionBase(BaseModel):
 class TransactionCreate(TransactionBase):
     """Transaction creation schema"""
     user_id: str
-    card_id: Optional[str] = None  # Optional - will use default card if not provided
+    card_id: Optional[str] = None  # Optional - deprecated, use card_index
+    card_index: Optional[int] = None  # Index of card in user's cards array
     merchant_id: Optional[str] = None
     recipient_email: Optional[str] = None  # For transfers
     user_location: Dict[str, Any]  # Current user location {"lat": x, "lon": y, "city": "Lisboa"}
@@ -74,7 +75,8 @@ class TransactionInDB(TransactionBase):
     """Transaction as stored in database"""
     id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
     user_id: str
-    card_id: str
+    card_id: Optional[str] = None  # Optional - using card_index now
+    card_index: Optional[int] = None  # Index in user's cards array
     merchant: MerchantInfo
     
     # User location at transaction time
@@ -111,7 +113,8 @@ class Transaction(TransactionBase):
     """Transaction response schema"""
     id: str = Field(..., alias="_id")
     user_id: str
-    card_id: str
+    card_id: Optional[str] = None  # Optional - using card_index now
+    card_index: Optional[int] = None  # Index in user's cards array
     merchant_id: Optional[str] = None
     merchant_info: Optional[MerchantInfo] = None
     user_location: Dict[str, Any]  # {"lat", "lon", "city"}

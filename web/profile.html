@@ -126,9 +126,179 @@
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+        
+        /* Modern Navbar Styles */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, var(--mbway-green) 0%, var(--mbway-dark-green) 100%);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        
+        .navbar-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+        }
+        
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .navbar-links {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+        
+        .navbar-link {
+            color: rgba(255, 255, 255, 0.9);
+            text-decoration: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .navbar-link:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+        }
+        
+        .navbar-link.active {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        .user-menu {
+            position: relative;
+        }
+        
+        .user-button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .user-button:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+        
+        .user-dropdown {
+            position: absolute;
+            top: 110%;
+            right: 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 200px;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s;
+        }
+        
+        .user-dropdown.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        
+        .user-dropdown a {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            color: #333;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        
+        .user-dropdown a:first-child {
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .user-dropdown a:last-child {
+            border-radius: 0 0 8px 8px;
+        }
+        
+        .user-dropdown a:hover {
+            background: #F5F5F5;
+        }
+        
+        .user-dropdown a.logout {
+            color: #D32F2F;
+            border-top: 1px solid #E0E0E0;
+        }
+        
+        body {
+            padding-top: 60px; /* Space for fixed navbar */
+        }
+        
+        .header-gradient {
+            margin-top: 0px; /* No extra space, starts right after navbar */
+        }
     </style>
 </head>
 <body>
+    <!-- Modern Navbar -->
+    <nav class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-brand">
+                <i class="fas fa-shield-alt"></i>
+                <span>BioTrust</span>
+            </div>
+            
+            <div class="navbar-links">
+                <a href="/static/dashboard.html" class="navbar-link">
+                    <i class="fas fa-home mr-1"></i> Dashboard
+                </a>
+                <a href="/static/cards.html" class="navbar-link">
+                    <i class="fas fa-credit-card mr-1"></i> Cartões
+                </a>
+                <a href="/static/transaction-history.html" class="navbar-link">
+                    <i class="fas fa-history mr-1"></i> Histórico
+                </a>
+                
+                <div class="user-menu">
+                    <button class="user-button" onclick="toggleUserMenu()">
+                        <i class="fas fa-user-circle text-xl"></i>
+                        <span id="user-name-nav">---</span>
+                        <i class="fas fa-chevron-down text-sm"></i>
+                    </button>
+                    
+                    <div class="user-dropdown" id="user-dropdown">
+                        <a href="/static/profile.html" class="active">
+                            <i class="fas fa-user mr-2"></i> Meu Perfil
+                        </a>
+                        <a href="#" onclick="logout()" class="logout">
+                            <i class="fas fa-sign-out-alt mr-2"></i> Sair
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
     <!-- Header -->
     <div class="header-gradient">
         <div class="flex items-center justify-between mb-6">
@@ -343,6 +513,28 @@
         function showComingSoon() {
             alert('Funcionalidade em desenvolvimento! 🚀');
         }
+        
+        // Toggle user dropdown menu
+        function toggleUserMenu() {
+            const dropdown = document.getElementById('user-dropdown');
+            dropdown.classList.toggle('show');
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const userMenu = document.querySelector('.user-menu');
+            if (userMenu && !userMenu.contains(e.target)) {
+                document.getElementById('user-dropdown').classList.remove('show');
+            }
+        });
+        
+        // Update navbar user name on load
+        window.addEventListener('DOMContentLoaded', () => {
+            if (currentUser) {
+                const firstName = currentUser.name.split(' ')[0];
+                document.getElementById('user-name-nav').textContent = firstName;
+            }
+        });
     </script>
 </body>
 </html>

@@ -35,8 +35,10 @@ async function handleLogin(event) {
         const data = await response.json();
         
         if (response.ok && data.success) {
-            // Save session token
-            localStorage.setItem('session_token', data.session_token);
+            // Save tokens (access + refresh)
+            localStorage.setItem('access_token', data.access_token);
+            localStorage.setItem('refresh_token', data.refresh_token);
+            localStorage.setItem('access_token_expires_at', data.access_token_expires_at);
             localStorage.setItem('user', JSON.stringify(data.user));
             
             // Success animation
@@ -61,7 +63,9 @@ async function handleRegister(event) {
     
     const name = document.getElementById('register-name').value;
     const email = document.getElementById('register-email').value;
-    const phone = document.getElementById('register-phone').value;
+    const countryCode = document.getElementById('register-country-code').value;
+    const phoneNumber = document.getElementById('register-phone').value;
+    const phone = countryCode + ' ' + phoneNumber.trim();
     const password = document.getElementById('register-password').value;
     
     try {
@@ -76,8 +80,10 @@ async function handleRegister(event) {
         const data = await response.json();
         
         if (response.ok && data.success) {
-            // Save session token
-            localStorage.setItem('session_token', data.session_token);
+            // Save tokens (access + refresh)
+            localStorage.setItem('access_token', data.access_token);
+            localStorage.setItem('refresh_token', data.refresh_token);
+            localStorage.setItem('access_token_expires_at', data.access_token_expires_at);
             localStorage.setItem('user', JSON.stringify(data.user));
             
             // Success animation
@@ -169,10 +175,10 @@ document.head.appendChild(style);
 
 // Check if already logged in
 window.addEventListener('DOMContentLoaded', () => {
-    const sessionToken = localStorage.getItem('session_token');
-    if (sessionToken && window.location.pathname === '/web') {
+    const accessToken = localStorage.getItem('access_token');
+    if (accessToken && window.location.pathname === '/web') {
         // Verify session is still valid
-        fetch(`${API_BASE}/api/auth/session/${sessionToken}`)
+        fetch(`${API_BASE}/api/auth/session/${accessToken}`)
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
@@ -180,8 +186,65 @@ window.addEventListener('DOMContentLoaded', () => {
                 }
             })
             .catch(() => {
-                // Session invalid, clear and stay on login
-                localStorage.clear();
+                // Session invalid, try to refresh
+                attemptTokenRefresh().then(success => {
+                    if (success) {
+                        window.location.href = '/static/dashboard.html';
+                    } else {
+                        localStorage.clear();
+                    }
+                });
             });
     }
 });
+
+// Auto-refresh token before expiration
+async function attemptTokenRefresh() {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+        return false;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ refresh_token: refreshToken })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            localStorage.setItem('access_token', data.access_token);
+            localStorage.setItem('access_token_expires_at', data.access_token_expires_at);
+            console.log('✅ Token refreshed successfully');
+            return true;
+        } else {
+            console.log('❌ Token refresh failed');
+            return false;
+        }
+    } catch (error) {
+        console.error('Token refresh error:', error);
+        return false;
+    }
+}
+
+// Check if token needs refresh (within 5 minutes of expiration)
+function shouldRefreshToken() {
+    const expiresAt = localStorage.getItem('access_token_expires_at');
+    if (!expiresAt) return false;
+    
+    const expiryTime = new Date(expiresAt).getTime();
+    const now = new Date().getTime();
+    const fiveMinutes = 5 * 60 * 1000;
+    
+    return (expiryTime - now) < fiveMinutes;
+}
+
+// Auto-refresh token periodically
+setInterval(() => {
+    if (shouldRefreshToken()) {
+        attemptTokenRefresh();
+    }
+}, 60000); // Check every minute

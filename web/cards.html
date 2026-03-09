@@ -132,24 +132,179 @@
         .fade-in {
             animation: fadeIn 0.3s ease-out;
         }
+        
+        /* Modern Navbar Styles */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, var(--mbway-green) 0%, var(--mbway-dark-green) 100%);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        
+        .navbar-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+        }
+        
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .navbar-links {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+        
+        .navbar-link {
+            color: rgba(255, 255, 255, 0.9);
+            text-decoration: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .navbar-link:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+        }
+        
+        .navbar-link.active {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        .user-menu {
+            position: relative;
+        }
+        
+        .user-button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .user-button:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+        
+        .user-dropdown {
+            position: absolute;
+            top: 110%;
+            right: 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 200px;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s;
+        }
+        
+        .user-dropdown.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        
+        .user-dropdown a {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            color: #333;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        
+        .user-dropdown a:first-child {
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .user-dropdown a:last-child {
+            border-radius: 0 0 8px 8px;
+        }
+        
+        .user-dropdown a:hover {
+            background: #F5F5F5;
+        }
+        
+        .user-dropdown a.logout {
+            color: #D32F2F;
+            border-top: 1px solid #E0E0E0;
+        }
+        
+        body {
+            padding-top: 60px; /* Space for fixed navbar */
+        }
     </style>
 </head>
 <body>
-    <!-- Header -->
-    <div class="header-gradient">
-        <div class="flex items-center justify-between mb-4">
-            <div class="back-button" onclick="goBack()">
-                <i class="fas fa-arrow-left"></i>
+    <!-- Modern Navbar -->
+    <nav class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-brand">
+                <i class="fas fa-shield-alt"></i>
+                <span>BioTrust</span>
             </div>
-            <h1 class="text-2xl font-bold">Os Meus Cartões</h1>
-            <div style="width: 40px;"></div>
+            
+            <div class="navbar-links">
+                <a href="/static/dashboard.html" class="navbar-link">
+                    <i class="fas fa-home mr-1"></i> Dashboard
+                </a>
+                <a href="/static/cards.html" class="navbar-link active">
+                    <i class="fas fa-credit-card mr-1"></i> Cartões
+                </a>
+                <a href="/static/transaction-history.html" class="navbar-link">
+                    <i class="fas fa-history mr-1"></i> Histórico
+                </a>
+                
+                <div class="user-menu">
+                    <button class="user-button" onclick="toggleUserMenu()">
+                        <i class="fas fa-user-circle text-xl"></i>
+                        <span id="user-name-nav">---</span>
+                        <i class="fas fa-chevron-down text-sm"></i>
+                    </button>
+                    
+                    <div class="user-dropdown" id="user-dropdown">
+                        <a href="/static/profile.html">
+                            <i class="fas fa-user mr-2"></i> Meu Perfil
+                        </a>
+                        <a href="#" onclick="logout()" class="logout">
+                            <i class="fas fa-sign-out-alt mr-2"></i> Sair
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
-    </div>
+    </nav>
     
     <!-- Content -->
     <div style="padding: 20px; max-width: 600px; margin: 0 auto;">
         <!-- Cards List -->
-        <div id="cards-list">
+        <div id="cards-container">
             <!-- Cards will be loaded here -->
         </div>
         
@@ -214,7 +369,18 @@
                             required
                         >
                             <option value="">Mês</option>
-                            ${Array.from({length: 12}, (_, i) => `<option value="${i + 1}">${String(i + 1).padStart(2, '0')}</option>`).join('')}
+                            <option value="1">01</option>
+                            <option value="2">02</option>
+                            <option value="3">03</option>
+                            <option value="4">04</option>
+                            <option value="5">05</option>
+                            <option value="6">06</option>
+                            <option value="7">07</option>
+                            <option value="8">08</option>
+                            <option value="9">09</option>
+                            <option value="10">10</option>
+                            <option value="11">11</option>
+                            <option value="12">12</option>
                         </select>
                     </div>
                     <div>
@@ -225,10 +391,16 @@
                             required
                         >
                             <option value="">Ano</option>
-                            ${Array.from({length: 10}, (_, i) => {
-                                const year = new Date().getFullYear() + i;
-                                return `<option value="${year}">${year}</option>`;
-                            }).join('')}
+                            <option value="2026">2026</option>
+                            <option value="2027">2027</option>
+                            <option value="2028">2028</option>
+                            <option value="2029">2029</option>
+                            <option value="2030">2030</option>
+                            <option value="2031">2031</option>
+                            <option value="2032">2032</option>
+                            <option value="2033">2033</option>
+                            <option value="2034">2034</option>
+                            <option value="2035">2035</option>
                         </select>
                     </div>
                 </div>
@@ -269,6 +441,7 @@
         </div>
     </div>
     
+    <script src="/static/js/token-manager.js"></script>
     <script src="/static/js/dashboard.js?v=2"></script>
     <script>
         const API_BASE = '';
@@ -469,7 +642,35 @@
                     e.target.value = formattedValue;
                 });
             }
+            
+            // Update navbar user name
+            if (currentUser) {
+                const firstName = currentUser.name.split(' ')[0];
+                document.getElementById('user-name-nav').textContent = firstName;
+            }
         });
+        
+        // Toggle user dropdown menu
+        function toggleUserMenu() {
+            const dropdown = document.getElementById('user-dropdown');
+            dropdown.classList.toggle('show');
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const userMenu = document.querySelector('.user-menu');
+            if (userMenu && !userMenu.contains(e.target)) {
+                document.getElementById('user-dropdown').classList.remove('show');
+            }
+        });
+        
+        // Logout function
+        function logout() {
+            localStorage.removeItem('user');
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            window.location.href = '/web';
+        }
     </script>
 </body>
 </html>

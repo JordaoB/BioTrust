@@ -153,26 +153,162 @@
             from { opacity: 0; transform: translateY(50px); }
             to { opacity: 1; transform: translateY(0); }
         }
+        
+        /* Modern Navbar */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+            padding: 12px 0;
+        }
+        
+        .navbar-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--mbway-green);
+        }
+        
+        .navbar-links {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+        }
+        
+        .navbar-link {
+            color: #666;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+        
+        .navbar-link:hover {
+            background: var(--mbway-light);
+            color: var(--mbway-green);
+        }
+        
+        .navbar-link.active {
+            background: var(--mbway-green);
+            color: white;
+        }
+        
+        .user-menu {
+            position: relative;
+        }
+        
+        .user-button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: #F5F5F5;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .user-button:hover {
+            background: var(--mbway-light);
+            color: var(--mbway-green);
+        }
+        
+        .user-dropdown {
+            position: absolute;
+            top: 48px;
+            right: 0;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            min-width: 200px;
+            display: none;
+            overflow: hidden;
+        }
+        
+        .user-dropdown.show {
+            display: block;
+            animation: fadeIn 0.2s ease-out;
+        }
+        
+        .user-dropdown a {
+            display: block;
+            padding: 12px 20px;
+            color: #333;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        
+        .user-dropdown a:hover {
+            background: #F5F5F5;
+        }
+        
+        .user-dropdown a.logout {
+            color: #D32F2F;
+            border-top: 1px solid #E0E0E0;
+        }
+        
+        body {
+            padding-top: 60px; /* Space for fixed navbar */
+        }
     </style>
 </head>
 <body>
-    <!-- Header with Balance -->
-    <div class="header-gradient text-white p-6 pb-8">
-        <div class="flex justify-between items-center mb-6">
-            <div>
-                <p class="text-sm opacity-90">Olá,</p>
-                <h1 class="text-2xl font-bold" id="user-name">---</h1>
+    <!-- Modern Navbar -->
+    <nav class="navbar">
+        <div class="navbar-content">
+            <div class="navbar-brand">
+                <i class="fas fa-shield-alt"></i>
+                <span>BioTrust</span>
             </div>
-            <button onclick="logout()" class="text-white opacity-90 hover:opacity-100">
-                <i class="fas fa-sign-out-alt text-xl"></i>
-            </button>
+            
+            <div class="navbar-links">
+                <a href="/static/dashboard.html" class="navbar-link active">
+                    <i class="fas fa-home mr-1"></i> Dashboard
+                </a>
+                <a href="/static/cards.html" class="navbar-link">
+                    <i class="fas fa-credit-card mr-1"></i> Cartões
+                </a>
+                <a href="/static/transaction-history.html" class="navbar-link">
+                    <i class="fas fa-history mr-1"></i> Histórico
+                </a>
+                
+                <div class="user-menu">
+                    <button class="user-button" onclick="toggleUserMenu()">
+                        <i class="fas fa-user-circle text-xl"></i>
+                        <span id="user-name-nav">---</span>
+                        <i class="fas fa-chevron-down text-sm"></i>
+                    </button>
+                    
+                    <div class="user-dropdown" id="user-dropdown">
+                        <a href="/static/profile.html">
+                            <i class="fas fa-user mr-2"></i> Meu Perfil
+                        </a>
+                        <a href="#" onclick="logout()" class="logout">
+                            <i class="fas fa-sign-out-alt mr-2"></i> Sair
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
-        
-        <div class="text-center">
-            <p class="text-sm opacity-90 mb-2">Saldo Disponível</p>
-            <h2 class="text-4xl font-bold" id="balance">€ 0.00</h2>
-        </div>
-    </div>
+    </nav>
     
     <!-- Cards Slider -->
     <div class="mt-6 mb-6">
@@ -264,6 +400,19 @@
                         required
                     >
                         <option value="">Selecione um contacto</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-credit-card mr-2"></i>Cartão
+                    </label>
+                    <select 
+                        id="card-select"
+                        class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
+                        required
+                    >
+                        <option value="">Selecione um cartão</option>
                     </select>
                 </div>
                 
@@ -404,6 +553,7 @@
     </div>
     
     <!-- Scripts -->
+    <script src="/static/js/token-manager.js"></script>
     <script src="/static/js/dashboard.js?v=1"></script>
 </body>
 </html>

@@ -3,9 +3,9 @@
  * v1.0 - MBWay Style Interface
  */
 
-const API_BASE = '';
+// API_BASE is defined in token-manager.js (loaded first)
 let currentUser = null;
-let sessionToken = null;
+let accessToken = null;
 let contacts = [];
 let userCards = [];
 
@@ -20,11 +20,14 @@ const LOCATIONS = {
 // Initialize dashboard
 window.addEventListener('DOMContentLoaded', async () => {
     // Check authentication
-    sessionToken = localStorage.getItem('session_token');
-    if (!sessionToken) {
+    accessToken = TokenManager.getAccessToken();
+    if (!accessToken) {
         window.location.href = '/web';
         return;
     }
+    
+    // Start auto-refresh
+    TokenManager.startAutoRefresh();
     
     // Load user data
     const userData = localStorage.getItem('user');
@@ -44,11 +47,19 @@ window.addEventListener('DOMContentLoaded', async () => {
 // Verify session is still valid
 async function verifySession() {
     try {
-        const response = await fetch(`${API_BASE}/api/auth/session/${sessionToken}`);
+        accessToken = TokenManager.getAccessToken();
+        const response = await fetch(`${API_BASE}/api/auth/session/${accessToken}`);
         const data = await response.json();
         
         if (!response.ok || !data.success) {
-            logout();
+            // Try to refresh token
+            const refreshed = await TokenManager.refreshAccessToken();
+            if (!refreshed) {
+                TokenManager.logout();
+            } else {
+                // Retry verification
+                await verifySession();
+            }
         } else {
             currentUser = data.user;
             localStorage.setItem('user', JSON.stringify(currentUser));
@@ -56,24 +67,32 @@ async function verifySession() {
         }
     } catch (error) {
         console.error('Session verification error:', error);
-        logout();
+        TokenManager.logout();
     }
 }
 
 // Update UI with user data
 function updateUI() {
     if (currentUser) {
-        document.getElementById('user-name').textContent = currentUser.name.split(' ')[0];
-        
-        // Calculate total balance from all cards
-        let totalBalance = 0;
-        if (userCards && userCards.length > 0) {
-            totalBalance = userCards.reduce((sum, card) => sum + (card.balance || 0), 0);
-        }
-        
-        document.getElementById('balance').textContent = `€ ${totalBalance.toFixed(2)}`;
+        // Update navbar user name
+        const firstName = currentUser.name.split(' ')[0];
+        document.getElementById('user-name-nav').textContent = firstName;
     }
 }
+
+// Toggle user dropdown menu
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    dropdown.classList.toggle('show');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const userMenu = document.querySelector('.user-menu');
+    if (userMenu && !userMenu.contains(e.target)) {
+        document.getElementById('user-dropdown').classList.remove('show');
+    }
+});
 
 // Load user data
 async function loadUserData() {
@@ -97,6 +116,7 @@ async function loadCards() {
         if (data.success && data.cards) {
             userCards = data.cards;
             displayCards(data.cards);
+            updateCardsDropdown();  // Add this
             updateUI();  // Update UI to recalculate balance
         }
     } catch (error) {
@@ -199,6 +219,38 @@ function updateContactsDropdown() {
                 ${contact.name} (${contact.phone})
             </option>
         `).join('');
+}
+
+// Update cards dropdown  
+function updateCardsDropdown() {
+    const select = document.getElementById('card-select');
+    if (!select) return; // Element doesn't exist on all pages
+    
+    if (!userCards || userCards.length === 0) {
+        select.innerHTML = '<option value="">Nenhum cartão disponível</option>';
+        return;
+    }
+    
+    select.innerHTML = '<option value="">Selecione um cartão</option>' +
+        userCards.map((card, index) => {
+            const balance = card.balance || 0;
+            const cardType = card.card_type === 'visa' ? 'VISA' : 
+                           card.card_type === 'mastercard' ? 'Mastercard' : 'AMEX';
+            const lastFour = card.last_four || card.masked_number?.slice(-4) || '****';
+            const defaultLabel = card.is_default ? ' (Principal)' : '';
+            
+            return `
+                <option value="${index}" data-balance="${balance}">
+                    ${cardType} **** ${lastFour}${defaultLabel} - €${balance.toFixed(2)}
+                </option>
+            `;
+        }).join('');
+    
+    // Auto-select default card
+    const defaultIndex = userCards.findIndex(c => c.is_default);
+    if (defaultIndex !== -1) {
+        select.value = defaultIndex.toString();
+    }
 }
 
 // Load transactions
@@ -314,12 +366,27 @@ async function handleSendMoney(event) {
     event.preventDefault();
     
     const recipientEmail = document.getElementById('recipient-select').value;
+    const cardIndex = parseInt(document.getElementById('card-select').value);
     const amount = parseFloat(document.getElementById('amount-input').value);
     const locationKey = document.getElementById('location-select').value;
     
     const recipient = contacts.find(c => c.email === recipientEmail);
     if (!recipient) {
         showError('Contacto inválido');
+        return;
+    }
+    
+    // Validate card selection
+    if (isNaN(cardIndex) || !userCards[cardIndex]) {
+        showError('Por favor selecione um cartão');
+        return;
+    }
+    
+    const selectedCard = userCards[cardIndex];
+    
+    // Validate card balance
+    if (selectedCard.balance < amount) {
+        showError(`Saldo insuficiente. Disponível: €${selectedCard.balance.toFixed(2)}`);
         return;
     }
     
@@ -336,7 +403,7 @@ async function handleSendMoney(event) {
             },
             body: JSON.stringify({
                 user_id: currentUser._id,
-                card_id: userCards.find(c => c.is_default)?._id || userCards[0]?._id,
+                card_index: cardIndex,  // Send card index instead of card_id
                 amount: amount,
                 type: 'transfer',
                 recipient_email: recipientEmail,
@@ -363,6 +430,7 @@ async function handleSendMoney(event) {
             closeSendMoneyModal();
             showSuccess(`Transação de €${amount.toFixed(2)} enviada para ${recipient.name}!`);
             await loadUserData();
+            await loadCards();  // Reload cards to update balances
             await loadTransactions();
             
             // Clear form
@@ -537,8 +605,7 @@ function viewHistory() {
 
 // Logout
 function logout() {
-    localStorage.clear();
-    window.location.href = '/web';
+    TokenManager.logout();
 }
 
 // Helper functions - Elegant notifications

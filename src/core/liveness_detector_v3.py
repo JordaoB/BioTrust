@@ -22,6 +22,18 @@ from scipy import signal
 from scipy.fft import fft, fftfreq
 import time
 import random
+import sys
+import os
+
+# Add backend path for logger import
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+try:
+    from backend.utils.logger import logger, log_liveness_attempt
+    LOGGING_ENABLED = True
+except ImportError:
+    LOGGING_ENABLED = False
+    print("[WARNING] Logger not available - running without structured logging")
 
 
 class LivenessDetectorV3:
@@ -933,6 +945,10 @@ class LivenessDetectorV3:
                                 if early_texture < self.TEXTURE_THRESHOLD:
                                     cap.release()
                                     cv2.destroyAllWindows()
+                                    
+                                    if LOGGING_ENABLED:
+                                        logger.warning(f"🚨 SPOOFING DETECTED | Texture: {early_texture:.3f} | Screen/monitor replay")
+                                    
                                     return {
                                         "success": False,
                                         "message": f"[FAIL] SPOOFING DETECTED: Low texture ({early_texture:.3f}) - Screen/monitor replay detected",
@@ -946,6 +962,10 @@ class LivenessDetectorV3:
                                 if early_moire > self.MOIRE_THRESHOLD:
                                     cap.release()
                                     cv2.destroyAllWindows()
+                                    
+                                    if LOGGING_ENABLED:
+                                        logger.warning(f"🚨 SPOOFING DETECTED | Moire: {early_moire:.3f} | Screen filming")
+                                    
                                     return {
                                         "success": False,
                                         "message": f"[FAIL] SPOOFING DETECTED: High moire ({early_moire:.3f}) - Screen filming detected",
@@ -959,6 +979,10 @@ class LivenessDetectorV3:
                                 if early_color_var < self.COLOR_VARIANCE_MIN:
                                     cap.release()
                                     cv2.destroyAllWindows()
+                                    
+                                    if LOGGING_ENABLED:
+                                        logger.warning(f"🚨 SPOOFING DETECTED | Color Variance: {early_color_var:.1f} | Compressed video")
+                                    
                                     return {
                                         "success": False,
                                         "message": f"[FAIL] SPOOFING DETECTED: Low color variance ({early_color_var:.1f}) - Compressed video detected",
@@ -1315,24 +1339,40 @@ class LivenessDetectorV3:
             result["success"] = False
             result["message"] = "[FAIL] SPOOFING DETECTED: Low texture (screen/monitor replay)"
             print("\n[ALERT] Video appears to be from a screen display")
+            
+            if LOGGING_ENABLED:
+                logger.error(f"❌ Liveness FAILED | Texture: {avg_texture:.3f} | Screen/monitor replay detected")
+            
             return result
         
         if not moire_pass:
             result["success"] = False
             result["message"] = "[FAIL] SPOOFING DETECTED: Moire patterns (screen filming)"
             print("\n[ALERT] Interference patterns indicate screen filming")
+            
+            if LOGGING_ENABLED:
+                logger.error(f"❌ Liveness FAILED | Moire: {avg_moire:.3f} | Screen filming detected")
+            
             return result
         
         if not color_pass:
             result["success"] = False
             result["message"] = "[FAIL] SPOOFING DETECTED: Low color variance (video compression)"
             print("\n[ALERT] Color variance suggests compressed video replay")
+            
+            if LOGGING_ENABLED:
+                logger.error(f"❌ Liveness FAILED | Color Variance: {avg_color_var:.1f} | Compressed video detected")
+            
             return result
         
         if not movement_natural:
             result["success"] = False
             result["message"] = "[FAIL] SPOOFING DETECTED: Unnatural movement patterns"
             print("\n[ALERT] Movement patterns do not match human behavior")
+            
+            if LOGGING_ENABLED:
+                logger.error(f"❌ Liveness FAILED | Movement: Unnatural patterns detected")
+            
             return result
         
         if enable_passive and not rppg_pass:
@@ -1341,12 +1381,19 @@ class LivenessDetectorV3:
                 result["success"] = False
                 result["message"] = f"[FAIL] SPOOFING DETECTED: Insufficient heart rate signal (HR: {heart_rate:.0f} BPM, Conf: {hr_confidence:.1%})"
                 print("\n[ALERT] Heart rate signal insufficient for liveness verification")
+                
+                if LOGGING_ENABLED:
+                    logger.error(f"❌ Liveness FAILED | rPPG: HR {heart_rate:.0f} BPM | Confidence: {hr_confidence:.1%} | Insufficient signal")
+                
                 return result
             else:
                 # rPPG is ADVISORY - pass with warning
                 print(f"\n[WARNING] rPPG confidence low (HR: {heart_rate:.0f} BPM, Conf: {hr_confidence:.1%})")
                 print("[WARNING] Proceeding based on active challenge verification")
                 result["rppg_warning"] = True
+                
+                if LOGGING_ENABLED:
+                    logger.warning(f"⚠️ Liveness WARNING | rPPG low confidence: HR {heart_rate:.0f} BPM | {hr_confidence:.1%} | Proceeding with active challenges")
         
         # ALL CHECKS PASSED!
         result["success"] = True
@@ -1358,6 +1405,14 @@ class LivenessDetectorV3:
             result["message"] = f"[SUCCESS] LIVENESS VERIFIED - Active challenges + anti-spoofing passed (rPPG: {hr_confidence:.1%} confidence)"
         else:
             result["message"] = "[SUCCESS] LIVENESS VERIFIED - All security layers passed"
+        
+        # Log successful verification
+        if LOGGING_ENABLED:
+            logger.success(
+                f"✅ Liveness PASSED | Challenges: {len(challenges_completed)}/{len(self.challenge_sequence)} | "
+                f"Texture: {avg_texture:.3f} | Moire: {avg_moire:.3f} | Color: {avg_color_var:.1f} | "
+                f"Movement: OK" + (f" | HR: {heart_rate:.0f} BPM ({hr_confidence:.1%})" if enable_passive and rppg_pass else "")
+            )
         
         print("\n" + "="*70)
         print("LIVENESS VERIFICATION SUCCESSFUL")
