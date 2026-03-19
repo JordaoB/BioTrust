@@ -10,6 +10,7 @@ from typing import Any, Dict, Union
 import importlib
 
 from backend.models.transaction import TransactionStatus
+from backend.observability.metrics import metrics_registry
 from backend.utils.logger import logger
 
 
@@ -40,6 +41,7 @@ async def settle_transaction_by_id(
 
     Returns a status dict with settled=True when funds were moved in this call.
     """
+    settlement_start = metrics_registry.start_timer()
     tx_obj_id = _to_object_id(transaction_id)
 
     claimed_tx = await db.transactions.find_one_and_update(
@@ -64,18 +66,23 @@ async def settle_transaction_by_id(
     if not claimed_tx:
         current = await db.transactions.find_one({"_id": tx_obj_id})
         if not current:
+            metrics_registry.record_settlement(False, "not_found", metrics_registry.elapsed_ms(settlement_start))
             return {"settled": False, "reason": "not_found"}
 
         settlement = current.get("settlement", {})
         if settlement.get("applied"):
+            metrics_registry.record_settlement(False, "already_settled", metrics_registry.elapsed_ms(settlement_start))
             return {"settled": False, "reason": "already_settled"}
 
         if current.get("status") != TransactionStatus.APPROVED:
+            metrics_registry.record_settlement(False, "not_approved", metrics_registry.elapsed_ms(settlement_start))
             return {"settled": False, "reason": "not_approved"}
 
         if settlement.get("state") == "processing":
+            metrics_registry.record_settlement(False, "processing", metrics_registry.elapsed_ms(settlement_start))
             return {"settled": False, "reason": "processing"}
 
+        metrics_registry.record_settlement(False, "not_claimed", metrics_registry.elapsed_ms(settlement_start))
         return {"settled": False, "reason": "not_claimed"}
 
     try:
@@ -141,6 +148,8 @@ async def settle_transaction_by_id(
             f"Amount: €{amount:.2f} | New Balance: €{(current_balance - amount):.2f}"
         )
 
+        metrics_registry.record_settlement(True, "settled", metrics_registry.elapsed_ms(settlement_start))
+
         return {
             "settled": True,
             "reason": "settled",
@@ -161,4 +170,6 @@ async def settle_transaction_by_id(
             },
         )
         logger.error(f"Settlement failed | TX: {tx_obj_id} | Error: {exc}")
+        metrics_registry.record_settlement(False, "failed", metrics_registry.elapsed_ms(settlement_start))
+        metrics_registry.record_db_error("settlement", str(exc))
         raise

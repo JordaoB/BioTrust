@@ -3,7 +3,7 @@ Authentication API Routes
 Handle user registration, login, and session management with persistent sessions
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Response, Request
+from fastapi import APIRouter, HTTPException, Depends, Response, Request, Header
 from backend.database import get_database
 from backend.models.session import Session, TokenPair, RefreshTokenRequest
 from backend.utils.logger import logger, log_security_event
@@ -29,6 +29,10 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class LogoutRequest(BaseModel):
+    access_token: Optional[str] = None
 
 
 class AuthResponse(BaseModel):
@@ -305,12 +309,28 @@ async def login(data: LoginRequest, request: Request, db=Depends(get_database)):
 
 
 @router.post("/logout")
-async def logout(access_token: str, db=Depends(get_database)):
+async def logout(
+    data: Optional[LogoutRequest] = None,
+    access_token: Optional[str] = None,
+    authorization: Optional[str] = Header(default=None),
+    db=Depends(get_database)
+):
     """
     Logout and invalidate session tokens
     Marks session as inactive in MongoDB
     """
-    session = await db.sessions.find_one({"access_token": access_token})
+    token = access_token
+
+    if not token and data and data.access_token:
+        token = data.access_token
+
+    if not token and authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+
+    if not token:
+        return {"success": True, "message": "No active session token provided"}
+
+    session = await db.sessions.find_one({"access_token": token})
     
     if session:
         # Mark session as inactive instead of deleting (for audit trail)

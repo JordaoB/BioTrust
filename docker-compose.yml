@@ -7,6 +7,9 @@ services:
     container_name: biotrust-api
     ports:
       - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
     volumes:
       # Mount data directory para persistência
       - ./data:/app/data
@@ -16,9 +19,26 @@ services:
       - ./src:/app/src
     environment:
       - ENVIRONMENT=production
+      - DEBUG=False
       - LOG_LEVEL=info
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-change-me-in-production-32-bytes}
+      - CORS_ORIGINS=${CORS_ORIGINS:-["https://your-frontend-domain.com"]}
+      - CORS_ALLOW_METHODS=${CORS_ALLOW_METHODS:-["GET","POST","PUT","PATCH","DELETE","OPTIONS"]}
+      - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS:-["Authorization","Content-Type","X-Requested-With"]}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-["your-api-domain.com"]}
+      - SECURITY_HEADERS_ENABLED=True
+      - RATE_LIMIT_ENABLED=True
+      - RATE_LIMIT_REQUESTS_PER_MINUTE=120
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
     networks:
       - biotrust-network

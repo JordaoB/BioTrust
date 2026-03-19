@@ -13,6 +13,7 @@ from backend.models.transaction import (
 from backend.models.user import Location
 from backend.utils.logger import logger, log_transaction_audit
 from backend.services.transaction_settlement import settle_transaction_by_id
+from backend.observability.metrics import metrics_registry
 from bson import ObjectId
 import sys
 import os
@@ -69,6 +70,7 @@ async def create_transaction(
     Create new transaction with risk analysis
     Determines if liveness verification is required
     """
+    operation_start = metrics_registry.start_timer()
     try:
         logger.info(f"📝 New transaction request | User: {transaction_data.user_id} | Amount: €{transaction_data.amount:.2f} | Merchant: {transaction_data.merchant_id}")
         
@@ -363,6 +365,18 @@ async def create_transaction(
                 user_agent=user_agent,
                 reason="Low risk - auto-approved"
             )
+
+        metrics_registry.record_transaction(
+            status=str(transaction_dict["status"]),
+            duration_ms=metrics_registry.elapsed_ms(operation_start),
+        )
+
+        alerts = metrics_registry.alerts()
+        if alerts["has_alerts"]:
+            for alert in alerts["active_alerts"]:
+                logger.warning(
+                    f"[ALERT:{alert['severity'].upper()}] {alert['type']} | {alert['message']}"
+                )
         else:
             logger.warning(f"⏳ Transaction PENDING (Liveness Required) | ID: {transaction_id} | User: {transaction_data.user_id} | €{transaction_data.amount:.2f} | Risk: {risk_level.value} ({risk_score:.1f}%)")
             
@@ -408,6 +422,7 @@ async def create_transaction(
         import traceback
         error_detail = f"{str(e)}\n{traceback.format_exc()}"
         logger.error(f"❌ Transaction creation failed | User: {transaction_data.user_id} | Amount: €{transaction_data.amount:.2f} | Error: {str(e)}")
+        metrics_registry.record_db_error("transactions.create_transaction", str(e))
         raise HTTPException(status_code=500, detail=error_detail)
 
 
@@ -448,6 +463,7 @@ async def update_transaction_liveness(
     Called after liveness verification is completed
     """
     
+    liveness_update_start = metrics_registry.start_timer()
     transaction_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id
     transaction = await db.transactions.find_one({"_id": transaction_obj_id})
     if not transaction:
@@ -496,6 +512,11 @@ async def update_transaction_liveness(
             logger.warning(
                 f"⚠️ Settlement skipped after liveness | TX: {transaction_id} | Reason: {settlement_result['reason']}"
             )
+
+    metrics_registry.record_liveness(
+        success=bool(liveness_success),
+        duration_ms=metrics_registry.elapsed_ms(liveness_update_start),
+    )
     
     # Update user liveness count
     await db.users.update_one(

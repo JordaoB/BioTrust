@@ -6,10 +6,14 @@ Privacy-by-Design: No biometric data storage, real-time verification only
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from backend.config import settings
 from backend.database import connect_to_mongo, close_mongo_connection
+from backend.observability.metrics import metrics_registry
+from backend.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware
 import logging
 from pathlib import Path
 
@@ -27,7 +31,12 @@ async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown"""
     # Startup
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
-    await connect_to_mongo()
+    try:
+        await connect_to_mongo()
+    except Exception as exc:
+        metrics_registry.record_db_error("startup.connect_to_mongo", str(exc))
+        logger.error(f"Failed to connect to MongoDB on startup: {exc}")
+        raise
     logger.info("Backend ready!")
     
     yield  # Application runs here
@@ -51,10 +60,22 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_methods=settings.CORS_ALLOW_METHODS,
+    allow_headers=settings.CORS_ALLOW_HEADERS,
 )
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
+
+if settings.SECURITY_HEADERS_ENABLED:
+    app.add_middleware(SecurityHeadersMiddleware)
+
+if settings.RATE_LIMIT_ENABLED:
+    app.add_middleware(
+        RateLimitMiddleware,
+        requests_per_minute=settings.RATE_LIMIT_REQUESTS_PER_MINUTE,
+    )
 
 # ========== STATIC FILES (Frontend) ==========
 # Serve static files (CSS, JS, images)
@@ -98,7 +119,7 @@ async def health_check():
     }
 
 # Import and register routes
-from backend.routes import users, merchants, transactions, liveness, liveness_stream, auth, cards
+from backend.routes import users, merchants, transactions, liveness, liveness_stream, auth, cards, observability
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
@@ -107,6 +128,7 @@ app.include_router(merchants.router, prefix="/api/merchants", tags=["Merchants"]
 app.include_router(transactions.router, prefix="/api/transactions", tags=["Transactions"])
 app.include_router(liveness.router, prefix="/api/liveness", tags=["Liveness Detection"])
 app.include_router(liveness_stream.router, prefix="/api/liveness-stream", tags=["Liveness Stream"])
+app.include_router(observability.router, prefix="/api/observability", tags=["Observability"])
 
 if __name__ == "__main__":
     import uvicorn

@@ -73,16 +73,19 @@
 
 ✅ **Risk Engine**
 - 📊 **Cálculo de risco** (0-100 pontos):
-  - 50% baseado no valor da transação
-  - 45% baseado na distância geográfica
-  - Amplificadores para cenários extremos
+  - 30% localização/distância (inclui Impossible Travel)
+  - 25% montante (absoluto + comparação histórica)
+  - 20% velocity/frequência (janelas 1h/2h)
+  - 15% confiança do destinatário/comerciante
+  - 10% horário (noite/madrugada)
 - 🚦 **Decisões automáticas**:
-  - Baixo risco (< 40) → Aprovação imediata
-  - Alto risco (≥ 40) → Requer liveness
+  - 0-25 → Aprovação imediata
+  - 26-59 → Requer liveness
+  - 60-100 → Alto risco (liveness obrigatório)
 - 🌍 **Análise geográfica**:
-  - Lisboa (casa) → risco baixo
-  - Porto (~300km) → risco médio
-  - Faro (~500km) → risco alto
+  - Impossible Travel: >100km em <30 min = risco máximo de localização
+  - País diferente e distância elevada aumentam score fortemente
+  - Histórico de localização influencia a decisão
 
 ✅ **Machine Learning - Anomaly Detection**
 - 🤖 **Isolation Forest** para detetar padrões anómalos
@@ -142,6 +145,17 @@
   - Liveness verificado (sim/não)
   - Razões de aprovação/rejeição
 
+✅ **Observabilidade Operacional**
+- 📈 **Métricas runtime** em `/api/observability/metrics`:
+  - Taxa de aprovação/rejeição de transações
+  - Taxa de falha de liveness
+  - Tempo médio por etapa (transação, liveness, settlement)
+- 🚨 **Alertas runtime** em `/api/observability/alerts`:
+  - Pico de rejeições
+  - Pico de falhas de liveness
+  - Falhas de settlement
+  - Erros de base de dados
+
 ---
 
 ## 🏗️ Arquitetura
@@ -166,11 +180,11 @@
 │               │                                              │
 │  ┌────────────▼─────────────────────────────────────────┐  │
 │  │  🧠 Risk Engine (Motor de Risco)                   │  │
-│  │  ├─ Análise de valor (50% do score)                │  │
-│  │  ├─ Análise geográfica (45% do score)              │  │
-│  │  ├─ Perfil comportamental                           │  │
+│  │  ├─ Localização/Distância (30%)                    │  │
+│  │  ├─ Montante (25%) + Velocity (20%)                │  │
+│  │  ├─ Destinatário (15%) + Horário (10%)             │  │
 │  │  ├─ Score final 0-100                               │  │
-│  │  └─ Decisão: < 40 = Aprovação | ≥ 40 = Liveness   │  │
+│  │  └─ Decisão: <=25 aprova | >25 liveness            │  │
 │  └────────────┬─────────────────────────────────────────┘  │
 │               │                                              │
 │  ┌────────────▼─────────────────────────────────────────┐  │
@@ -181,7 +195,7 @@
 │  │  ├─ Risk boost: +15% max                            │  │
 │  │  └─ Model: models/anomaly_detector.pkl              │  │
 │  └────────────┬─────────────────────────────────────────┘  │
-│               │ (se risco ≥ 40)                              │
+│               │ (se risco > 25)                              │
 │  ┌────────────▼─────────────────────────────────────────┐  │
 │  │  🔐 Liveness Detection V3                          │  │
 │  │  ├─ 5 desafios aleatórios:                          │  │
@@ -228,6 +242,12 @@
 - **Docker** - Containerização
 - **Uvicorn** - ASGI server
 - **Git** - Controlo de versão
+
+### CI/CD
+- **GitHub Actions** - Pipeline em `.github/workflows/ci.yml`
+  - Lint crítico (`ruff`)
+  - Testes automáticos E2E (`pytest`)
+  - Build Docker (`docker build`)
 
 ---
 
@@ -312,7 +332,7 @@ open_web.bat
 
 ```
 Ação: Enviar €100 para João Silva (Lisboa - mesma cidade)
-Risco: ~25 pontos (baixo)
+Risco: <=25 pontos (baixo)
 Resultado: ✅ Aprovação IMEDIATA (sem liveness)
 Saldo: Deduzido automaticamente
 ```
@@ -321,17 +341,17 @@ Saldo: Deduzido automaticamente
 
 ```
 Ação: Enviar €1.000 para Maria Santos (Porto - 300km)
-Risco: ~55 pontos (médio)
+Risco: 26-59 pontos (médio)
 Resultado: 🔐 LIVENESS REQUERIDO → Janela OpenCV abre
-Desafios: 4 desafios aleatórios
+Desafios: sequência aleatória (3-5)
 ```
 
 ### Cenário 3: Transação de Alto Risco 🚨
 
 ```
 Ação: Enviar €5.000 para Sofia (Faro - 500km+)
-Risco: ~95 pontos (crítico)
-Resultado: 🔐 LIVENESS OBRIGATÓRIO → 5 desafios
+Risco: >=60 pontos (alto)
+Resultado: 🔐 LIVENESS OBRIGATÓRIO
 Dificuldade: Máxima, erros voltam ao início
 ```
 
@@ -484,13 +504,13 @@ Amex:       374245455400126
 - ✅ Validações de limite diário e por transação
 - ✅ Dedução automática de saldo
 - ✅ Verificação Luhn para números de cartão
-- ✅ Risk scoring contextual (50% valor + 45% distância)
+- ✅ Risk engine multi-fator (30/25/20/15/10)
 - ✅ Liveness detection com 5 desafios
 - ✅ Sistema de erros inteligente (reset/block)
 - ✅ Interface MBWay-style completa
 - ✅ Gestão de contactos e transações
 - ✅ Histórico detalhado com filtros
-- ✅ Autenticação por sessão (24h)
+- ✅ Sessões com access token + refresh token
 - ✅ MongoDB com schemas flexíveis
 - ✅ Docker support
 
@@ -504,6 +524,41 @@ Amex:       374245455400126
 - [ ] 2FA adicional
 - [ ] Modo escuro
 - [ ] App mobile nativa
+
+---
+
+## 🔒 Checklist de Produção
+
+Antes de deploy em produção, validar:
+
+1. **Secrets management**
+- Não usar secrets hardcoded.
+- Configurar `SECRET_KEY` e `ENCRYPTION_KEY` via secrets manager (AWS Secrets Manager / Azure Key Vault / GCP Secret Manager).
+
+2. **CORS e Hosts restritos**
+- Definir `CORS_ORIGINS` apenas para domínios frontend oficiais.
+- Definir `ALLOWED_HOSTS` para domínios/API gateway reais.
+
+3. **Headers de segurança e rate limit**
+- Manter `SECURITY_HEADERS_ENABLED=True`.
+- Manter `RATE_LIMIT_ENABLED=True` e ajustar `RATE_LIMIT_REQUESTS_PER_MINUTE`.
+
+4. **Política de logs sensíveis**
+- Rever retention por tipo de log (30/60/90/180/365 dias).
+- Garantir que dados sensíveis não são logados (tokens, dados completos de cartão, biometria bruta).
+
+5. **Observabilidade e alertas**
+- Integrar `/api/observability/metrics` em dashboard.
+- Integrar `/api/observability/alerts` em sistema de alerta (Slack/Teams/PagerDuty).
+
+6. **CI/CD obrigatório antes de deploy**
+- Lint crítico.
+- Testes automáticos (E2E mínimo).
+- Build Docker válido.
+
+7. **Hardening de container**
+- `read_only` filesystem + `tmpfs`.
+- `cap_drop: [ALL]` + `no-new-privileges`.
 
 ---
 

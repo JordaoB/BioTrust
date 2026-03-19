@@ -7,6 +7,7 @@ PRIVACY-BY-DESIGN: No biometric data is stored - only verification metadata
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime
 from backend.database import get_database
+from backend.observability.metrics import metrics_registry
 from backend.services.transaction_settlement import settle_transaction_by_id
 from bson import ObjectId
 import sys
@@ -55,6 +56,7 @@ async def verify_liveness(
     Abre janela OpenCV no servidor para verificação
     """
     
+    operation_start = metrics_registry.start_timer()
     # Fetch transaction
     transaction_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id
     transaction = await db.transactions.find_one({"_id": transaction_obj_id})
@@ -78,9 +80,9 @@ async def verify_liveness(
     
     # Determinar risk level baseado no score
     risk_score = transaction.get("risk_score", 50)
-    if risk_score > 70:
+    if risk_score >= 60:
         risk_level = "high"
-    elif risk_score > 40:
+    elif risk_score > 25:
         risk_level = "medium"
     else:
         risk_level = "low"
@@ -143,6 +145,18 @@ async def verify_liveness(
                 f"Settlement result | TX: {transaction_id} | "
                 f"settled: {settlement_result['settled']} | reason: {settlement_result['reason']}"
             )
+
+        metrics_registry.record_liveness(
+            success=bool(result["success"]),
+            duration_ms=metrics_registry.elapsed_ms(operation_start),
+        )
+
+        alerts = metrics_registry.alerts()
+        if alerts["has_alerts"]:
+            for alert in alerts["active_alerts"]:
+                print(
+                    f"[ALERT:{alert['severity'].upper()}] {alert['type']} | {alert['message']}"
+                )
         
         # Fetch updated transaction
         updated_transaction = await db.transactions.find_one({"_id": transaction_obj_id})
@@ -171,6 +185,7 @@ async def verify_liveness(
         import traceback
         print(f"\n❌ ERRO na verificação: {str(e)}")
         print(traceback.format_exc())
+        metrics_registry.record_db_error("liveness.verify", str(e))
         raise HTTPException(status_code=500, detail=f"Liveness verification failed: {str(e)}")
 
 
@@ -204,7 +219,7 @@ async def get_liveness_requirements(transaction_id: str, db=Depends(get_database
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
     
-    risk_level = transaction["risk_level"]
+    risk_level = str(transaction["risk_level"]).upper()
     
     # Challenge count based on risk
     requirements = {
