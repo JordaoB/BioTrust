@@ -7,6 +7,8 @@ PRIVACY-BY-DESIGN: No biometric data is stored - only verification metadata
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime
 from backend.database import get_database
+from backend.services.transaction_settlement import settle_transaction_by_id
+from bson import ObjectId
 import sys
 import os
 import cv2
@@ -52,7 +54,6 @@ async def verify_liveness(
     
     Abre janela OpenCV no servidor para verificação
     """
-    from bson import ObjectId
     
     # Fetch transaction
     transaction_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id
@@ -130,6 +131,18 @@ async def verify_liveness(
             {"_id": transaction_obj_id},
             {"$set": update_data}
         )
+
+        # 💰 Settlements are centralized in backend.services.transaction_settlement
+        if result["success"]:
+            settlement_result = await settle_transaction_by_id(
+                db=db,
+                transaction_id=transaction_obj_id,
+                source="liveness_verify_endpoint"
+            )
+            print(
+                f"Settlement result | TX: {transaction_id} | "
+                f"settled: {settlement_result['settled']} | reason: {settlement_result['reason']}"
+            )
         
         # Fetch updated transaction
         updated_transaction = await db.transactions.find_one({"_id": transaction_obj_id})
@@ -164,7 +177,6 @@ async def verify_liveness(
 @router.get("/status/{transaction_id}")
 async def get_liveness_status(transaction_id: str, db=Depends(get_database)):
     """Get liveness verification status for a transaction"""
-    from bson import ObjectId
     
     transaction_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id
     transaction = await db.transactions.find_one({"_id": transaction_obj_id})
@@ -186,7 +198,6 @@ async def get_liveness_requirements(transaction_id: str, db=Depends(get_database
     Get liveness verification requirements based on risk level
     Returns challenge count and timeout
     """
-    from bson import ObjectId
     
     transaction_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id
     transaction = await db.transactions.find_one({"_id": transaction_obj_id})

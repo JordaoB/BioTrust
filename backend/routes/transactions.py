@@ -5,13 +5,14 @@ Create and manage payment transactions with risk analysis
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from backend.database import get_database
 from backend.models.transaction import (
     Transaction, TransactionCreate, TransactionStatus, RiskLevel
 )
 from backend.models.user import Location
 from backend.utils.logger import logger, log_transaction_audit
+from backend.services.transaction_settlement import settle_transaction_by_id
 from bson import ObjectId
 import sys
 import os
@@ -19,6 +20,15 @@ import os
 # Import risk engine
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from src.core.risk_engine import RiskEngine
+
+# Import anomaly detector
+try:
+    from src.core.anomaly_detector import anomaly_detector
+    ANOMALY_DETECTOR_AVAILABLE = True
+    logger.info("🤖 Anomaly detector loaded successfully")
+except Exception as e:
+    ANOMALY_DETECTOR_AVAILABLE = False
+    logger.warning(f"⚠️ Anomaly detector not available: {e}")
 
 router = APIRouter()
 risk_engine = RiskEngine()
@@ -175,7 +185,23 @@ async def create_transaction(
                 merchant_info["location"]
             )
         
-        # Risk analysis using existing risk engine
+        # Risk analysis using FINTECH-GRADE risk engine
+        # Buscar transações recentes (últimas 24h para velocity checks)
+        recent_cutoff = datetime.utcnow() - timedelta(hours=24)
+        recent_transactions = await db.transactions.find({
+            "user_id": transaction_data.user_id,
+            "created_at": {"$gte": recent_cutoff}
+        }).to_list(length=100)
+        
+        # Construir histórico de destinatários e comerciantes
+        recipient_history = {}
+        merchant_history = {}
+        for tx in recent_transactions:
+            if tx.get("recipient_email"):
+                recipient_history[tx["recipient_email"]] = recipient_history.get(tx["recipient_email"], 0) + 1
+            if tx.get("merchant_id"):
+                merchant_history[tx["merchant_id"]] = merchant_history.get(tx["merchant_id"], 0) + 1
+        
         transaction_for_risk = {
             "amount": transaction_data.amount,
             "location": {
@@ -186,25 +212,84 @@ async def create_transaction(
             },
             "timestamp": datetime.utcnow(),
             "transaction_type": str(transaction_data.type),
+            "recipient_email": transaction_data.recipient_email,  # Para transferências
+            "merchant_id": transaction_data.merchant_id,  # Para pagamentos
             "user_profile": {
-                "average_transaction": user.get("average_transaction", 0.0),
-                "max_transaction": user.get("max_transaction", 0.0),
+                "average_transaction": user.get("average_transaction", 50.0),
+                "max_transaction": user.get("max_transaction", 200.0),
+                "total_sent": user.get("total_sent", 0.0),
+                "transactions_today": user.get("transactions_today", 0),
                 "home_location": user["home_location"],
                 "last_transaction_location": user.get("last_transaction_location", user["home_location"]),
+                "last_transaction_time": user.get("last_transaction_time"),
                 "account_age_days": user.get("account_age_days", 0),
-                "transactions_today": user.get("transactions_today", 0)
+                "recent_transactions": recent_transactions,  # Para velocity checks
+                "recipient_history": recipient_history,  # Para trust scoring
+                "merchant_history": merchant_history   # Para trust scoring
             }
         }
         
         risk_analysis = risk_engine.analyze_transaction(transaction_for_risk)
         risk_score = risk_analysis['risk_score']
+        
+        # ML Anomaly Detection
+        is_anomaly = False
+        anomaly_score = 0.0
+        anomaly_reason = None
+        
+        if ANOMALY_DETECTOR_AVAILABLE:
+            try:
+                # Count recent transactions
+                one_hour_ago = datetime.utcnow()
+                one_hour_ago = one_hour_ago.replace(hour=one_hour_ago.hour-1 if one_hour_ago.hour > 0 else 23)
+                
+                transactions_last_hour = await db.transactions.count_documents({
+                    "user_id": transaction_data.user_id,
+                    "created_at": {"$gte": one_hour_ago}
+                })
+                
+                # Get last transaction time
+                last_tx = await db.transactions.find_one(
+                    {"user_id": transaction_data.user_id},
+                    sort=[("created_at", -1)]
+                )
+                last_transaction_time = last_tx.get("created_at") if last_tx else None
+                
+                # Predict anomaly
+                is_anomaly, anomaly_score, anomaly_reason = anomaly_detector.predict(
+                    transaction_data={
+                        "amount": transaction_data.amount,
+                        "distance_from_home_km": distance_from_home,
+                        "created_at": datetime.utcnow()
+                    },
+                    user_history={
+                        "average_transaction": user.get("average_transaction", 0),
+                        "transactions_today": user.get("transactions_today", 0),
+                        "transactions_last_hour": transactions_last_hour,
+                        "last_transaction_time": last_transaction_time
+                    }
+                )
+                
+                # Adjust risk score if anomaly detected
+                if is_anomaly:
+                    # Add 15% of anomaly score to risk score (max boost: +15 points)
+                    risk_boost = min(15, anomaly_score * 0.15)
+                    risk_score = min(100, risk_score + risk_boost)
+                    logger.warning(f"🚨 ANOMALY DETECTED | Score: {anomaly_score:.1f}/100 | Reason: {anomaly_reason} | Risk boost: +{risk_boost:.1f}")
+                else:
+                    logger.info(f"✅ No anomaly detected | Score: {anomaly_score:.1f}/100")
+                    
+            except Exception as e:
+                logger.error(f"❌ Anomaly detection failed: {e}")
+                # Continue without anomaly detection
+        
         risk_level = RiskLevel.LOW
-        if risk_score > 70:
+        if risk_score >= 60:  # Novo threshold: 60+ = Alto Risco
             risk_level = RiskLevel.HIGH
-        elif risk_score > 40:
+        elif risk_score > 25:  # Novo threshold: 26-59 = Médio Risco
             risk_level = RiskLevel.MEDIUM
         
-        liveness_required = risk_score > 40  # Require liveness for medium/high risk
+        liveness_required = risk_score > 25  # Require liveness para médio/alto risco (26+)
         
         # Create transaction document
         transaction_dict = {
@@ -213,6 +298,7 @@ async def create_transaction(
             "card_index": card_index,  # Store card index for later use
             "merchant_id": transaction_data.merchant_id,
             "merchant_info": merchant_info,
+            "recipient_email": transaction_data.recipient_email,  # For transfers
             "amount": transaction_data.amount,
             "currency": transaction_data.currency,
             "transaction_type": transaction_data.type,
@@ -221,10 +307,17 @@ async def create_transaction(
             "distance_from_merchant_km": round(distance_from_merchant, 2) if distance_from_merchant else None,
             "risk_score": round(risk_score, 2),
             "risk_level": risk_level,
+            "anomaly_detected": bool(is_anomaly),  # Convert numpy bool to Python bool
+            "anomaly_score": round(float(anomaly_score), 2),  # Convert numpy float to Python float
+            "anomaly_reason": anomaly_reason,
             "liveness_required": liveness_required,
             "liveness_performed": False,
             "liveness_result": None,
             "status": TransactionStatus.PENDING if liveness_required else TransactionStatus.APPROVED,
+            "settlement": {
+                "applied": False,
+                "state": "pending"
+            },
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
@@ -239,19 +332,22 @@ async def create_transaction(
         # If transaction is approved immediately (low risk), deduct from card balance
         if transaction_dict["status"] == TransactionStatus.APPROVED:
             logger.success(f"✅ Transaction APPROVED (Low Risk) | ID: {transaction_id} | User: {transaction_data.user_id} | €{transaction_data.amount:.2f}")
-            
-            await db.users.update_one(
-                {"_id": user_id_obj},
-                {
-                    "$inc": {
-                        f"cards.{card_index}.balance": -transaction_data.amount,
-                        f"cards.{card_index}.daily_spent": transaction_data.amount
-                    },
-                    "$set": {
-                        f"cards.{card_index}.last_reset": today
-                    }
-                }
+            settlement_result = await settle_transaction_by_id(
+                db=db,
+                transaction_id=result.inserted_id,
+                source="create_transaction_auto_approved"
             )
+
+            if settlement_result["settled"]:
+                logger.success(
+                    f"✅ Funds settled | TX: {transaction_id} | "
+                    f"Card Index: {settlement_result['card_index']} | "
+                    f"Amount: €{settlement_result['amount']:.2f}"
+                )
+            else:
+                logger.warning(
+                    f"⚠️ Settlement skipped | TX: {transaction_id} | Reason: {settlement_result['reason']}"
+                )
             
             # Audit log for approved transaction
             log_transaction_audit(
@@ -384,25 +480,22 @@ async def update_transaction_liveness(
     
     # If liveness was successful, deduct from card balance
     if liveness_success:
-        user_id_obj = ObjectId(transaction["user_id"]) if ObjectId.is_valid(transaction["user_id"]) else transaction["user_id"]
-        user = await db.users.find_one({"_id": user_id_obj})
-        if user:
-            # Use the card_index stored in the transaction
-            card_idx = transaction.get("card_index")
-            if card_idx is not None:
-                today = datetime.utcnow().date().isoformat()
-                await db.users.update_one(
-                    {"_id": user_id_obj},
-                    {
-                        "$inc": {
-                            f"cards.{card_idx}.balance": -transaction["amount"],
-                            f"cards.{card_idx}.daily_spent": transaction["amount"]
-                        },
-                        "$set": {
-                            f"cards.{card_idx}.last_reset": today
-                        }
-                    }
-                )
+        settlement_result = await settle_transaction_by_id(
+            db=db,
+            transaction_id=transaction_obj_id,
+            source="transactions_patch_liveness"
+        )
+
+        if settlement_result["settled"]:
+            logger.success(
+                f"✅ Funds settled after liveness | TX: {transaction_id} | "
+                f"Card Index: {settlement_result['card_index']} | "
+                f"Amount: €{settlement_result['amount']:.2f}"
+            )
+        else:
+            logger.warning(
+                f"⚠️ Settlement skipped after liveness | TX: {transaction_id} | Reason: {settlement_result['reason']}"
+            )
     
     # Update user liveness count
     await db.users.update_one(

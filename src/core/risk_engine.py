@@ -1,45 +1,60 @@
 """
-BioTrust - Risk Engine (Motor de Risco Contextual)
-===================================================
+BioTrust - Risk Engine V2 (Motor de Risco Fintech-Grade)
+=========================================================
 TecStorm '26 Hackathon Project
 
-Este módulo analisa transações em tempo real e calcula um score de risco (0-100)
-para decidir se a transação deve ser aprovada automaticamente ou requerer
-verificação de liveness.
+Motor de risco rigoroso baseado em lógicas de Fintech real (Revolut, SIBS).
+Cruza biometria comportamental com limites estritos para detetar fraude.
 
 Sistema de Pontuação:
-- 0-30:   Risco Baixo  → Aprovação Automática ✅
-- 31-70:  Risco Médio  → Requer Liveness 🔍
-- 71-100: Risco Alto   → Requer Liveness + Alerta 🚨
+- 0-35:   Risco Baixo   → Aprovação Automática ✅
+- 36-74:  Risco Médio   → Requer Liveness 🔍
+- 75-100: Risco Alto    → Requer Liveness + Bloqueio se falhar 🚨
 
-Fatores Analisados:
-1. Valor da Transação (30%)
-2. Localização Geográfica (25%)
-3. Horário (20%)
-4. Comportamento/Frequência (15%)
-5. Tipo de Transação (10%)
+Fatores Analisados (Pesos):
+1. Distância/Localização (30%) - Impossible Travel Detection
+2. Montante (25%) - Amount vs Historical Average
+3. Frequência/Velocity (20%) - Rapid Transaction Checks
+4. Destinatário/Comerciante (15%) - Trust Level
+5. Horário (10%) - Time-of-Day Risk
 """
 
-import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import math
 
 
 class RiskEngine:
-    """Motor de análise de risco para transações de pagamento."""
+    """Motor de análise de risco Fintech-grade para transações."""
     
-    # Pesos dos fatores de risco (total = 100%)
-    # MUITO AGRESSIVO: Valor + Localização são os fatores dominantes
-    WEIGHT_AMOUNT = 0.50      # 50% - Valor é CRÍTICO!
-    WEIGHT_LOCATION = 0.45    # 45% - Localização suspeita é CRÍTICA!
-    WEIGHT_TIME = 0.03        # 3%
-    WEIGHT_BEHAVIOR = 0.01    # 1%
-    WEIGHT_TYPE = 0.01        # 1%
+    # ========== PESOS DOS FATORES (TOTAL = 100%) ==========
+    WEIGHT_LOCATION = 0.30      # 30% - Impossible Travel é CRÍTICO
+    WEIGHT_AMOUNT = 0.25        # 25% - Montantes anómalos
+    WEIGHT_VELOCITY = 0.20      # 20% - Frequência de transações
+    WEIGHT_RECIPIENT = 0.15     # 15% - Confiança no destinatário
+    WEIGHT_TIME = 0.10          # 10% - Horário da transação
     
-    # Thresholds de decisão
-    THRESHOLD_LOW_RISK = 30
-    THRESHOLD_HIGH_RISK = 70
+    # ========== THRESHOLDS DE DECISÃO (MUITO MAIS RIGOROSOS) ==========
+    THRESHOLD_LOW_RISK = 25     # 0-25: Aprovação direta (reduzido de 35)
+    THRESHOLD_HIGH_RISK = 60    # 60-100: Alto risco + bloqueio (reduzido de 75)
+    
+    # ========== CONSTANTES DE RISCO ==========
+    IMPOSSIBLE_TRAVEL_DISTANCE = 100  # km - Distância suspeita em curto tempo
+    IMPOSSIBLE_TRAVEL_TIME_MINUTES = 30  # minutos - Janela de tempo para impossible travel
+    HIGH_AMOUNT_THRESHOLD = 500       # €500+ = Agravamento forte
+    MEDIUM_AMOUNT_THRESHOLD = 300     # €300+ = Agravamento médio
+    LOW_AMOUNT_THRESHOLD = 100        # €100+ = Atenção
+    SMALL_AMOUNT_THRESHOLD = 20       # €20- = Risco muito baixo
+    RAPID_TX_COUNT_2H = 3             # 3+ transações em 2h = Risco
+    RAPID_TX_COUNT_1H = 2             # 2+ transações em 1h = Risco elevado
+    RAPID_TX_WINDOW_HOURS = 2         # Janela de tempo para velocity check
+    SAME_RECIPIENT_LIMIT_HIGH = 3     # 3+ envios para mesmo destinatário em 1h = Risco alto
+    SAME_RECIPIENT_LIMIT_MED = 2      # 2+ envios para mesmo destinatário em 1h = Risco médio
+    SAME_RECIPIENT_WINDOW_HOURS = 1   # Janela de tempo para mesmo destinatário
+    NIGHT_START_HOUR = 2              # 02:00
+    NIGHT_END_HOUR = 6                # 06:00
+    LATE_NIGHT_START = 22             # 22:00
+    EARLY_MORNING_END = 8             # 08:00
     
     def __init__(self):
         """Inicializa o motor de risco."""
@@ -52,348 +67,425 @@ class RiskEngine:
         Args:
             transaction: Dicionário com dados da transação:
                 - amount: float (valor em €)
-                - location: dict {city: str, country: str, lat: float, lon: float}
-                - timestamp: datetime (hora da transação)
-                - transaction_type: str (online, presencial, transferencia)
-                - user_profile: dict (histórico do utilizador)
+                - location: dict {city, country, lat, lon}
+                - timestamp: datetime
+                - transaction_type: str
+                - user_profile: dict com:
+                  - average_transaction: float
+                  - total_sent: float
+                  - transactions_today: int
+                  - home_location: dict {lat, lon, city, country}
+                  - last_transaction_location: dict {lat, lon}
+                  - last_transaction_time: datetime
+                  - recent_transactions: list
+                  - recipient_history: dict {email: count}
+                  - merchant_history: dict {id: count}
                 
         Returns:
             Dict com:
                 - risk_score: int (0-100)
-                - decision: str (approve, require_liveness, block)
-                - factors: dict (breakdown por fator)
+                - risk_level: str (low/medium/high)
+                - liveness_required: bool
+                - decision: str (approve/require_liveness/alert)
+                - factors: dict (breakdown detalhado)
                 - reason: str (explicação)
         """
-        # Calcular cada fator de risco
-        amount_risk = self._calculate_amount_risk(
-            transaction['amount'],
-            transaction['user_profile']
-        )
+        user_profile = transaction.get('user_profile', {})
         
-        location_risk = self._calculate_location_risk(
+        # ========== 1. FATOR LOCALIZAÇÃO (30%) ==========
+        location_risk, location_reason = self._calculate_location_risk(
             transaction['location'],
-            transaction['user_profile']
+            user_profile
         )
         
-        time_risk = self._calculate_time_risk(
-            transaction.get('timestamp', datetime.now()),
-            transaction['user_profile']
+        # ========== 2. FATOR MONTANTE (25%) ==========
+        amount_risk, amount_reason = self._calculate_amount_risk(
+            transaction['amount'],
+            user_profile
         )
         
-        behavior_risk = self._calculate_behavior_risk(
-            transaction['user_profile']
+        # ========== 3. FATOR VELOCIDADE/FREQUÊNCIA (20%) ==========
+        velocity_risk, velocity_reason = self._calculate_velocity_risk(
+            transaction,
+            user_profile
         )
         
-        type_risk = self._calculate_type_risk(
-            transaction.get('transaction_type', 'online')
+        # ========== 4. FATOR DESTINATÁRIO/COMERCIANTE (15%) ==========
+        recipient_risk, recipient_reason = self._calculate_recipient_risk(
+            transaction,
+            user_profile
         )
         
-        # Calcular score total (média ponderada)
-        base_score = (
-            amount_risk * self.WEIGHT_AMOUNT +
+        # ========== 5. FATOR HORÁRIO (10%) ==========
+        time_risk, time_reason = self._calculate_time_risk(
+            transaction.get('timestamp', datetime.utcnow())
+        )
+        
+        # ========== CÁLCULO DO SCORE FINAL ==========
+        risk_score = int(
             location_risk * self.WEIGHT_LOCATION +
-            time_risk * self.WEIGHT_TIME +
-            behavior_risk * self.WEIGHT_BEHAVIOR +
-            type_risk * self.WEIGHT_TYPE
+            amount_risk * self.WEIGHT_AMOUNT +
+            velocity_risk * self.WEIGHT_VELOCITY +
+            recipient_risk * self.WEIGHT_RECIPIENT +
+            time_risk * self.WEIGHT_TIME
         )
         
-        # AMPLIFICADOR DE RISCO: Se AMBOS amount e location são altos, multiplica o risco
-        # Cenário: €5000 a 500km+ = EXTREMAMENTE SUSPEITO
-        if amount_risk >= 80 and location_risk >= 80:
-            # Ambos fatores críticos altos = amplifica para quase 100%
-            base_score = min(base_score * 1.15, 100)  # +15% boost
-        elif amount_risk >= 70 and location_risk >= 70:
-            # Ambos fatores altos = amplifica moderadamente
-            base_score = min(base_score * 1.10, 100)  # +10% boost
+        # Garantir que está no range [0, 100]
+        risk_score = max(0, min(100, risk_score))
         
-        risk_score = int(base_score)
-        
-        # Tomar decisão baseada no score
-        decision, reason = self._make_decision(risk_score, {
-            'amount_risk': amount_risk,
-            'location_risk': location_risk,
-            'time_risk': time_risk,
-            'behavior_risk': behavior_risk,
-            'type_risk': type_risk
-        })
-        
-        # Adicionar à história (para análise comportamental futura)
-        self.transaction_history.append({
-            'transaction': transaction,
-            'risk_score': risk_score,
-            'decision': decision,
-            'timestamp': datetime.now()
-        })
+        # ========== DECISÃO FINAL ==========
+        if risk_score <= self.THRESHOLD_LOW_RISK:
+            risk_level = "low"
+            decision = "approve"
+            liveness_required = False
+            reason = "Baixo risco - Aprovação automática"
+        elif risk_score < self.THRESHOLD_HIGH_RISK:
+            risk_level = "medium"
+            decision = "require_liveness"
+            liveness_required = True
+            reason = "Risco médio - Verificação biométrica necessária"
+        else:
+            risk_level = "high"
+            decision = "require_liveness"
+            liveness_required = True
+            reason = f"Alto risco - Verificação biométrica obrigatória. {location_reason} {amount_reason} {velocity_reason}"
         
         return {
             'risk_score': risk_score,
+            'risk_level': risk_level,
+            'liveness_required': liveness_required,
             'decision': decision,
             'reason': reason,
             'factors': {
-                'amount': amount_risk,
-                'location': location_risk,
-                'time': time_risk,
-                'behavior': behavior_risk,
-                'type': type_risk
-            },
-            'breakdown': {
-                'amount': f"{amount_risk * self.WEIGHT_AMOUNT:.1f} pts",
-                'location': f"{location_risk * self.WEIGHT_LOCATION:.1f} pts",
-                'time': f"{time_risk * self.WEIGHT_TIME:.1f} pts",
-                'behavior': f"{behavior_risk * self.WEIGHT_BEHAVIOR:.1f} pts",
-                'type': f"{type_risk * self.WEIGHT_TYPE:.1f} pts"
+                'location': {
+                    'score': location_risk,
+                    'weight': self.WEIGHT_LOCATION,
+                    'contribution': location_risk * self.WEIGHT_LOCATION,
+                    'reason': location_reason
+                },
+                'amount': {
+                    'score': amount_risk,
+                    'weight': self.WEIGHT_AMOUNT,
+                    'contribution': amount_risk * self.WEIGHT_AMOUNT,
+                    'reason': amount_reason
+                },
+                'velocity': {
+                    'score': velocity_risk,
+                    'weight': self.WEIGHT_VELOCITY,
+                    'contribution': velocity_risk * self.WEIGHT_VELOCITY,
+                    'reason': velocity_reason
+                },
+                'recipient': {
+                    'score': recipient_risk,
+                    'weight': self.WEIGHT_RECIPIENT,
+                    'contribution': recipient_risk * self.WEIGHT_RECIPIENT,
+                    'reason': recipient_reason
+                },
+                'time': {
+                    'score': time_risk,
+                    'weight': self.WEIGHT_TIME,
+                    'contribution': time_risk * self.WEIGHT_TIME,
+                    'reason': time_reason
+                }
             }
         }
     
-    def _calculate_amount_risk(self, amount: float, user_profile: Dict) -> float:
+    def _calculate_location_risk(self, location: Dict, user_profile: Dict) -> tuple:
         """
-        Calcula risco baseado no valor da transação.
+        Fator 1: Distância/Localização (30%)
         
-        Score 0-100:
-        - Valor baixo comparado com média do utilizador: score baixo
-        - Valor muito acima da média: score alto
+        Regras:
+        - Impossible Travel (>100km em <30 min) = 100 pontos
+        - Fora do país habitual = +40 pontos base
+        - Distância elevada de casa = Escala progressiva
         """
-        avg_amount = user_profile.get('average_transaction', 50)
-        max_amount = user_profile.get('max_transaction', 200)
+        risk = 0
+        reasons = []
         
-        # Ratio em relação à média
-        ratio = amount / avg_amount if avg_amount > 0 else 1
-        
-        # Calcular score baseado no ratio (mais agressivo)
-        if ratio <= 1.0:
-            # Transação menor ou igual à média
-            score = 10
-        elif ratio <= 2.0:
-            # Até 2x a média
-            score = 20 + (ratio - 1.0) * 20
-        elif ratio <= 5.0:
-            # 2x a 5x a média
-            score = 40 + (ratio - 2.0) * 20  # Aumentado de 15 para 20
-        elif ratio <= 10.0:
-            # 5x a 10x a média - MUITO SUSPEITO
-            score = 85 + (ratio - 5.0) * 3
-        else:
-            # Mais de 10x a média - EXTREMAMENTE SUSPEITO
-            score = 100
-        
-        # Valores absolutos altos - MUITO AGRESSIVO
-        if amount > 500:
-            score = max(score, 60)   # €500+ já é suspeito
-        if amount > 1000:
-            score = max(score, 75)   # €1000+ muito suspeito
-        if amount > 2500:
-            score = max(score, 85)   # €2500+ extremamente suspeito
-        if amount > 5000:
-            score = max(score, 95)   # €5000+ = MÁXIMO RISCO
-            
-        return min(score, 100)
-    
-    def _calculate_location_risk(self, location: Dict, user_profile: Dict) -> float:
-        """
-        Calcula risco baseado na localização geográfica.
-        
-        Fatores:
-        - Distância da localização habitual
-        - País diferente
-        - Velocidade impossível (2 transações muito distantes em pouco tempo)
-        """
         home_location = user_profile.get('home_location', {})
-        last_location = user_profile.get('last_transaction_location', {})
+        last_location = user_profile.get('last_transaction_location', home_location)
+        last_tx_time = user_profile.get('last_transaction_time')
         
-        score = 0
+        # Calcular distância de casa
+        distance_from_home = self._haversine_distance(
+            home_location.get('lat', 0),
+            home_location.get('lon', 0),
+            location.get('lat', 0),
+            location.get('lon', 0)
+        )
         
-        # Verificar país
-        if location.get('country') != home_location.get('country'):
-            score += 40  # País diferente = risco significativo
-        
-        # Calcular distância da localização habitual
-        if 'lat' in location and 'lat' in home_location:
-            distance_km = self._haversine_distance(
-                location['lat'], location['lon'],
-                home_location['lat'], home_location['lon']
+        # IMPOSSIBLE TRAVEL CHECK
+        if last_tx_time and last_location:
+            time_diff = (datetime.utcnow() - last_tx_time).total_seconds() / 60  # minutos
+            distance_from_last = self._haversine_distance(
+                last_location.get('lat', 0),
+                last_location.get('lon', 0),
+                location.get('lat', 0),
+                location.get('lon', 0)
             )
             
-            # Escala EXTREMAMENTE agressiva para distâncias suspeitas
-            if distance_km > 500:
-                score += 100  # Muito longe = MÁXIMO RISCO
-            elif distance_km > 300:
-                score += 90   # >300km = quase máximo
-            elif distance_km > 200:
-                score += 80   # >200km = muito suspeito
-            elif distance_km > 100:
-                score += 60   # >100km = suspeito
-            elif distance_km > 50:
-                score += 35   # Cidade vizinha
-            elif distance_km > 20:
-                score += 15   # Proximidade
-            # < 20km: 0 pontos (local)
+            if time_diff < self.IMPOSSIBLE_TRAVEL_TIME_MINUTES and distance_from_last > self.IMPOSSIBLE_TRAVEL_DISTANCE:
+                risk = 100
+                reasons.append(f"IMPOSSIBLE TRAVEL: {distance_from_last:.0f}km em {time_diff:.0f}min")
+                return risk, " | ".join(reasons)
         
-        # Verificar cidade
-        elif location.get('city') != home_location.get('city'):
-            score += 30
+        # PAÍS DIFERENTE (MUITO MAIS RIGOROSO)
+        home_country = home_location.get('country', 'Portugal')
+        current_country = location.get('country', home_country)
+        if current_country != home_country:
+            risk += 60  # Aumentado de 40 para 60
+            reasons.append(f"Fora do país habitual ({home_country} → {current_country})")
         
-        return min(score, 100)
+        # DISTÂNCIA DE CASA (escala MUITO mais rigorosa)
+        if distance_from_home < 10:
+            risk += 0
+        elif distance_from_home < 50:
+            risk += 15  # Aumentado de 10 para 15
+        elif distance_from_home < 150:
+            risk += 35  # Aumentado de 25 para 35
+        elif distance_from_home < 300:
+            risk += 55  # Aumentado de 45 para 55
+        else:
+            risk += 75  # Aumentado de 65 para 75
+            reasons.append(f"Muito longe de casa ({distance_from_home:.0f}km)")
+        
+        if not reasons:
+            reasons.append(f"Localização normal ({distance_from_home:.0f}km de casa)")
+        
+        return min(risk, 100), " | ".join(reasons)
     
-    def _calculate_time_risk(self, timestamp: datetime, user_profile: Dict) -> float:
+    def _calculate_amount_risk(self, amount: float, user_profile: Dict) -> tuple:
         """
-        Calcula risco baseado no horário da transação.
+        Fator 2: Montante (25%)
         
-        Fatores:
-        - Horário (madrugada = mais suspeito)
-        - Frequência de transações (muitas em pouco tempo)
+        Regras:
+        - > 3x média histórica = Alto risco (60+ pontos)
+        - > €500 = +25 pontos automáticos
+        - < €20 = Risco baixo (10 pontos)
         """
-        score = 0
+        risk = 0
+        reasons = []
+        
+        avg_transaction = user_profile.get('average_transaction', 50)
+        
+        # MONTANTES MUITO BAIXOS (seguros)
+        if amount < self.SMALL_AMOUNT_THRESHOLD:
+            risk = 10
+            reasons.append(f"Montante baixo (€{amount:.2f})")
+            return risk, " | ".join(reasons)
+        
+        # ESCALAS DE MONTANTES (MUITO MAIS RIGOROSAS)
+        if amount >= 1000:
+            risk += 80  # €1000+ = Risco altíssimo
+            reasons.append(f"Montante MUITO elevado (€{amount:.2f})")
+        elif amount >= self.HIGH_AMOUNT_THRESHOLD:  # €500+
+            risk += 60  # Aumentado de 25 para 60
+            reasons.append(f"Montante elevado (€{amount:.2f})")
+        elif amount >= self.MEDIUM_AMOUNT_THRESHOLD:  # €300+
+            risk += 40  # Novo threshold
+            reasons.append(f"Montante médio-alto (€{amount:.2f})")
+        elif amount >= self.LOW_AMOUNT_THRESHOLD:  # €100+
+            risk += 20  # Novo threshold
+            reasons.append(f"Montante médio (€{amount:.2f})")
+        
+        # COMPARAÇÃO COM MÉDIA HISTÓRICA (MUITO MAIS RIGOROSA)
+        if avg_transaction > 0:
+            ratio = amount / avg_transaction
+            
+            if ratio <= 1.0:
+                pass  # Dentro da média - não adicionar risco
+            elif ratio <= 1.5:
+                risk += 15  # Ligeiramente acima
+            elif ratio <= 2.0:
+                risk += 30  # Aumentado de 15 para 30
+            elif ratio <= 3.0:
+                risk += 50  # Aumentado de 35 para 50
+                reasons.append(f"Muito acima da média (€{amount:.2f} vs €{avg_transaction:.2f})")
+            elif ratio <= 5.0:
+                risk += 70  # Aumentado de 60 para 70
+                reasons.append(f"MUITO acima da média (€{amount:.2f} vs €{avg_transaction:.2f})")
+            else:
+                risk += 90  # Aumentado de 80 para 90
+                reasons.append(f"EXTREMAMENTE acima da média (€{amount:.2f} vs €{avg_transaction:.2f})")
+        else:
+            # Sem histórico - MUITO MAIS RIGOROSO
+            if amount > 500:
+                risk += 70
+                reasons.append("Sem histórico + montante MUITO elevado")
+            elif amount > 200:
+                risk += 50  # Aumentado de 40 para 50
+                reasons.append("Sem histórico + montante elevado")
+            elif amount > 100:
+                risk += 30
+                reasons.append("Sem histórico + montante médio")
+        
+        if not reasons:
+            reasons.append(f"Montante normal (€{amount:.2f})")
+        
+        return min(risk, 100), " | ".join(reasons)
+    
+    def _calculate_velocity_risk(self, transaction: Dict, user_profile: Dict) -> tuple:
+        """
+        Fator 3: Frequência/Velocity (20%)
+        
+        Regras:
+        - Regra de Pânico: >3 transações em 2h = +30 pontos
+        - 3+ envios para mesmo destinatário em 1h = +40 pontos (padrão de roubo)
+        """
+        risk = 0
+        reasons = []
+        
+        recent_transactions = user_profile.get('recent_transactions', [])
+        
+        # CONTAGEM DE TRANSAÇÕES RECENTES (MUITO MAIS RIGOROSO)
+        now = datetime.utcnow()
+        cutoff_1h = now - timedelta(hours=1)
+        cutoff_2h = now - timedelta(hours=self.RAPID_TX_WINDOW_HOURS)
+        
+        recent_1h = [tx for tx in recent_transactions if tx.get('created_at', now) > cutoff_1h]
+        recent_2h = [tx for tx in recent_transactions if tx.get('created_at', now) > cutoff_2h]
+        tx_count_1h = len(recent_1h)
+        tx_count_2h = len(recent_2h)
+        
+        # Verificação em 1 hora (NOVO)
+        if tx_count_1h >= 2:
+            risk += 40  # 2+ TX em 1h = Risco alto
+            reasons.append(f"VELOCIDADE MUITO ALTA: {tx_count_1h} transações em 1h")
+        
+        # Verificação em 2 horas (MAIS RIGOROSO)
+        if tx_count_2h >= 4:
+            risk += 60  # 4+ TX em 2h = Risco altíssimo
+            reasons.append(f"VELOCIDADE EXTREMA: {tx_count_2h} transações em 2h")
+        elif tx_count_2h >= self.RAPID_TX_COUNT_2H:
+            risk += 40  # Aumentado de 30 para 40
+            reasons.append(f"VELOCIDADE ALTA: {tx_count_2h} transações em 2h")
+        
+        # ENVIOS PARA MESMO DESTINATÁRIO (última 1 hora) - MUITO MAIS RIGOROSO
+        recipient_email = transaction.get('recipient_email')
+        if recipient_email:
+            same_recipient_cutoff = now - timedelta(hours=self.SAME_RECIPIENT_WINDOW_HOURS)
+            same_recipient_count = sum(
+                1 for tx in recent_transactions
+                if tx.get('recipient_email') == recipient_email and tx.get('created_at', now) > same_recipient_cutoff
+            )
+            
+            if same_recipient_count >= self.SAME_RECIPIENT_LIMIT_HIGH:  # 3+
+                risk += 50  # Aumentado de 40 para 50
+                reasons.append(f"PADRÃO MUITO SUSPEITO: {same_recipient_count}ª transação para {recipient_email} em 1h")
+            elif same_recipient_count >= self.SAME_RECIPIENT_LIMIT_MED:  # 2+
+                risk += 30  # Novo threshold
+                reasons.append(f"PADRÃO SUSPEITO: {same_recipient_count}ª transação para {recipient_email} em 1h")
+        
+        if not reasons:
+            reasons.append("Frequência normal")
+        
+        return min(risk, 100), " | ".join(reasons)
+    
+    def _calculate_recipient_risk(self, transaction: Dict, user_profile: Dict) -> tuple:
+        """
+        Fator 4: Destinatário/Comerciante (15%)
+        
+        Regras (MUITO MAIS RIGOROSAS):
+        - Primeira vez = 80 pontos (Risco ALTO)
+        - 1-3 vezes = 60 pontos
+        - 4-5 vezes = 40 pontos
+        - 6-10 vezes = 20 pontos
+        - 10+ vezes = 10 pontos (Confiança)
+        """
+        risk = 0
+        reasons = []
+        
+        recipient_email = transaction.get('recipient_email')
+        merchant_id = transaction.get('merchant_id')
+        
+        recipient_history = user_profile.get('recipient_history', {})
+        merchant_history = user_profile.get('merchant_history', {})
+        
+        if recipient_email:
+            count = recipient_history.get(recipient_email, 0)
+            
+            if count == 0:
+                risk = 80  # MUITO AUMENTADO (era 50+20=70)
+                reasons.append("Novo destinatário (1ª vez) - RISCO ALTO")
+            elif count <= 3:
+                risk = 60  # Novo threshold
+                reasons.append(f"Destinatário pouco conhecido ({count}x)")
+            elif count <= 5:
+                risk = 40  # Novo threshold
+                reasons.append(f"Destinatário conhecido ({count}x)")
+            elif count <= 10:
+                risk = 20  # Novo threshold
+                reasons.append(f"Destinatário frequente ({count}x)")
+            else:
+                risk = 10  # Confiança (era 50-15=35)
+                reasons.append(f"Contacto de confiança ({count}x anteriores)")
+        
+        elif merchant_id:
+            count = merchant_history.get(merchant_id, 0)
+            
+            if count == 0:
+                risk = 70  # Aumentado de 50+15=65
+                reasons.append("Novo comerciante (1ª vez) - RISCO ALTO")
+            elif count <= 3:
+                risk = 50
+                reasons.append(f"Comerciante pouco conhecido ({count}x)")
+            elif count <= 5:
+                risk = 35
+                reasons.append(f"Comerciante conhecido ({count}x)")
+            elif count <= 10:
+                risk = 20
+                reasons.append(f"Comerciante frequente ({count}x)")
+            else:
+                risk = 10
+                reasons.append(f"Comerciante de confiança ({count}x)")
+        else:
+            risk = 50  # Sem destinatário = Risco médio
+            reasons.append("Sem destinatário específico")
+        
+        return max(0, min(risk, 100)), " | ".join(reasons)
+    
+    def _calculate_time_risk(self, timestamp: datetime) -> tuple:
+        """
+        Fator 5: Horário (10%)
+        
+        Regras (MUITO MAIS RIGOROSAS):
+        - Madrugada (02:00-06:00) = 60 pontos (Risco ALTO)
+        - Noite/Madrugada (22:00-02:00) = 30 pontos
+        - Manhã Cedo (06:00-08:00) = 20 pontos
+        - Horário Normal = 0 pontos
+        """
+        risk = 0
+        reasons = []
+        
         hour = timestamp.hour
         
-        # Análise do horário
-        if 2 <= hour <= 6:
-            # Madrugada (2h-6h)
-            score += 40
-        elif 22 <= hour or hour <= 1:
-            # Noite tardia
-            score += 20
-        elif 6 <= hour <= 9 or 18 <= hour <= 22:
-            # Manhã cedo ou noite
-            score += 5
+        if self.NIGHT_START_HOUR <= hour < self.NIGHT_END_HOUR:  # 02:00-06:00
+            risk = 60  # MUITO AUMENTADO (era 20)
+            reasons.append(f"MADRUGADA ({hour:02d}h) - RISCO MUITO ALTO")
+        elif hour >= self.LATE_NIGHT_START or hour < self.NIGHT_START_HOUR:  # 22:00-02:00
+            risk = 30  # Novo threshold
+            reasons.append(f"Noite tardia ({hour:02d}h) - RISCO MÉDIO")
+        elif self.NIGHT_END_HOUR <= hour < self.EARLY_MORNING_END:  # 06:00-08:00
+            risk = 20  # Novo threshold
+            reasons.append(f"Manhã muito cedo ({hour:02d}h) - RISCO BAIXO")
         else:
-            # Horário normal (9h-18h)
-            score += 0
+            risk = 0
+            reasons.append(f"Horário normal ({hour:02d}h)")
         
-        # Frequência: verificar quantas transações hoje
-        transactions_today = user_profile.get('transactions_today', 0)
-        if transactions_today > 10:
-            score += 30
-        elif transactions_today > 5:
-            score += 15
-        elif transactions_today > 3:
-            score += 5
-        
-        return min(score, 100)
-    
-    def _calculate_behavior_risk(self, user_profile: Dict) -> float:
-        """
-        Calcula risco baseado no comportamento do utilizador.
-        
-        Fatores:
-        - Conta nova vs. antiga
-        - Padrão de uso consistente
-        - Número de transações falhadas recentemente
-        """
-        score = 0
-        
-        # Idade da conta
-        account_age_days = user_profile.get('account_age_days', 0)
-        if account_age_days < 7:
-            score += 40  # Conta muito nova
-        elif account_age_days < 30:
-            score += 20
-        elif account_age_days < 90:
-            score += 10
-        
-        # Transações falhadas recentemente
-        failed_transactions = user_profile.get('failed_transactions_last_week', 0)
-        if failed_transactions > 3:
-            score += 30
-        elif failed_transactions > 1:
-            score += 15
-        
-        # Primeira transação do dia
-        if user_profile.get('transactions_today', 0) == 0:
-            score += 5
-        
-        return min(score, 100)
-    
-    def _calculate_type_risk(self, transaction_type: str) -> float:
-        """
-        Calcula risco baseado no tipo de transação.
-        
-        Tipos:
-        - presencial: menor risco (PIN + cartão físico)
-        - online: risco médio
-        - transferencia: risco maior (mais difícil de reverter)
-        """
-        risk_by_type = {
-            'presencial': 10,
-            'online': 40,
-            'transferencia': 60,
-            'internacional': 70,
-            'criptomoeda': 80
-        }
-        
-        return risk_by_type.get(transaction_type.lower(), 40)
-    
-    def _make_decision(self, risk_score: int, factors: Dict) -> tuple:
-        """
-        Toma decisão baseada no score de risco.
-        
-        Returns:
-            (decision, reason) - decisão e explicação
-        """
-        if risk_score < self.THRESHOLD_LOW_RISK:
-            return ('approve', 'Transação de baixo risco - aprovada automaticamente')
-        
-        elif risk_score < self.THRESHOLD_HIGH_RISK:
-            # Identificar fator dominante
-            dominant_factor = max(factors, key=factors.get)
-            return (
-                'require_liveness',
-                f'Risco médio detectado (fator: {dominant_factor}) - verificação de liveness necessária'
-            )
-        
-        else:
-            # Identificar fatores críticos
-            critical_factors = [k for k, v in factors.items() if v > 70]
-            factors_str = ', '.join(critical_factors) if critical_factors else 'múltiplos'
-            return (
-                'require_liveness',
-                f'Risco alto detectado ({factors_str}) - verificação de liveness obrigatória'
-            )
+        return risk, " | ".join(reasons)
     
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         """
-        Calcula distância entre duas coordenadas GPS usando fórmula de Haversine.
-        
-        Returns:
-            Distância em quilómetros
+        Calcula distância entre dois pontos geográficos em km usando fórmula de Haversine.
         """
         R = 6371  # Raio da Terra em km
         
-        # Converter para radianos
-        lat1_rad = math.radians(lat1)
-        lat2_rad = math.radians(lat2)
-        delta_lat = math.radians(lat2 - lat1)
-        delta_lon = math.radians(lon2 - lon1)
+        lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
         
-        # Fórmula de Haversine
-        a = math.sin(delta_lat / 2) ** 2 + \
-            math.cos(lat1_rad) * math.cos(lat2_rad) * \
-            math.sin(delta_lon / 2) ** 2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        
+        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+        c = 2 * math.asin(math.sqrt(a))
         
         return R * c
-    
-    def get_statistics(self) -> Dict:
-        """
-        Retorna estatísticas das transações analisadas.
-        """
-        if not self.transaction_history:
-            return {
-                'total_transactions': 0,
-                'approved': 0,
-                'require_liveness': 0,
-                'average_risk_score': 0
-            }
-        
-        total = len(self.transaction_history)
-        approved = sum(1 for t in self.transaction_history if t['decision'] == 'approve')
-        require_liveness = sum(1 for t in self.transaction_history if t['decision'] == 'require_liveness')
-        avg_score = sum(t['risk_score'] for t in self.transaction_history) / total
-        
-        return {
-            'total_transactions': total,
-            'approved': approved,
-            'require_liveness': require_liveness,
-            'blocked': total - approved - require_liveness,
-            'average_risk_score': round(avg_score, 2),
-            'approval_rate': f"{(approved / total * 100):.1f}%"
-        }

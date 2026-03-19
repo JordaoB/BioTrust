@@ -84,6 +84,22 @@
   - Porto (~300km) → risco médio
   - Faro (~500km) → risco alto
 
+✅ **Machine Learning - Anomaly Detection**
+- 🤖 **Isolation Forest** para detetar padrões anómalos
+- 📊 **10 features engenheiradas**:
+  - Valor da transação (normalizado)
+  - Hora do dia e dia da semana
+  - Distância de casa
+  - Velocidade de transações (última hora)
+  - Frequência diária
+  - Ratio de valor vs média do utilizador
+  - Timing suspeito (noite, fim-de-semana)
+- 🎯 **Detecção em tempo real** (<100ms)
+- 📝 **Explicações legíveis**: "Valor elevado: €5,000 (típico: €50)"
+- 🔄 **Ajuste automático de risco**: Score de anomalia incrementa risco base
+- 💾 **Model persistence**: Treino offline, predição online
+- 📈 **Retraining**: Script automático para atualizar o modelo
+
 ### 🎨 Interface Web
 
 ✅ **Dashboard Moderno**
@@ -103,6 +119,28 @@
 - Dados pessoais
 - Estatísticas de conta
 - Logout seguro
+
+### 📊 Logging & Auditoria
+
+✅ **Sistema de Logs Completo** (loguru)
+- 📝 **6 tipos de logs separados**:
+  - Console: Colorido com emojis em tempo real
+  - General: Logs gerais do sistema (30 dias)
+  - Errors: Apenas erros (90 dias)
+  - Audit Trail: Transações com contexto completo (365 dias, JSON)
+  - Liveness: Tentativas de verificação biométrica (60 dias)
+  - Security: Eventos de autenticação (180 dias)
+- 🔄 **Rotação automática**: Daily midnight rotation
+- 🗜️ **Compressão**: ZIP automático de logs antigos
+- 🔍 **Rastreabilidade**:
+  - IP address e User-Agent em todos os eventos
+  - transaction_id para tracking completo
+  - Timestamps UTC em formato ISO
+- 📊 **Audit Trail estruturado**:
+  - Todas as decisões de transação
+  - Montantes, status, risk score, anomaly score
+  - Liveness verificado (sim/não)
+  - Razões de aprovação/rejeição
 
 ---
 
@@ -134,6 +172,15 @@
 │  │  ├─ Score final 0-100                               │  │
 │  │  └─ Decisão: < 40 = Aprovação | ≥ 40 = Liveness   │  │
 │  └────────────┬─────────────────────────────────────────┘  │
+│               │                                              │
+│  ┌────────────▼─────────────────────────────────────────┐  │
+│  │  🤖 ML Anomaly Detector (Isolation Forest)         │  │
+│  │  ├─ 10 features: amount, time, distance, velocity  │  │
+│  │  ├─ Anomaly score: 0-100                            │  │
+│  │  ├─ Explicação: "High amount", "Unusual distance"  │  │
+│  │  ├─ Risk boost: +15% max                            │  │
+│  │  └─ Model: models/anomaly_detector.pkl              │  │
+│  └────────────┬─────────────────────────────────────────┘  │
 │               │ (se risco ≥ 40)                              │
 │  ┌────────────▼─────────────────────────────────────────┐  │
 │  │  🔐 Liveness Detection V3                          │  │
@@ -148,6 +195,7 @@
 │  │  └─ OpenCV para processamento                       │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                                                              │
+│  📊 Logging System (loguru) - 6 log types                   │
 │  💾 MongoDB: users, cards, transactions, merchants          │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -161,11 +209,14 @@
 - **FastAPI 2.0** - Framework web moderno e rápido
 - **MongoDB 8.2** - Database NoSQL para flexibilidade
 - **Motor/PyMongo** - Driver async para MongoDB
+- **loguru** - Logging estruturado com rotação e compressão
 
 ### Computer Vision & AI
 - **OpenCV** - Processamento de imagem e vídeo
 - **MediaPipe** - Face mesh detection (468 landmarks)
 - **NumPy + SciPy** - Processamento numérico avançado
+- **scikit-learn** - Machine Learning (Isolation Forest para anomaly detection)
+- **joblib** - Model persistence e serialização
 
 ### Frontend
 - **HTML5 + CSS3 + JavaScript**
@@ -225,6 +276,15 @@ python data/seed_database.py
 - `ana.costa@example.com` - €5.000 + €3.000 (Braga, 2 cartões)
 - `pedro.oliveira@example.com` - €1.500 (Lisboa)
 - `sofia.rodrigues@example.com` - €1.200 (Porto)
+
+### 4.5️⃣ Treinar Modelo de ML (Anomaly Detection)
+
+```bash
+# Treina o modelo Isolation Forest com transações históricas
+python data/train_anomaly_model.py
+```
+
+**Nota:** Necessário ter pelo menos 10 transações na database. Executar após `seed_database.py`.
 
 ### 5️⃣ Iniciar Backend
 
@@ -447,7 +507,19 @@ Amex:       374245455400126
 
 ---
 
-## 🐛 Troubleshooting
+## � Documentação Completa
+
+Para informações detalhadas sobre componentes específicos:
+
+- **[Sistema de Logging](docs/LOGGING_SYSTEM.md)** - Logs estruturados, audit trail, retention policies
+- **[ML Anomaly Detection](docs/ML_ANOMALY_DETECTION.md)** - Machine Learning para detetar fraudes, training, tuning
+- **[Guia da API](docs/GUIA_API_WEB.md)** - Endpoints da API REST
+- **[Passive Liveness](docs/PASSIVE_LIVENESS_TECH.md)** - Tecnologias de deteção biométrica
+- **[Estrutura do Projeto](docs/PROJECT_STRUCTURE.md)** - Organização dos ficheiros
+
+---
+
+## �🐛 Troubleshooting
 
 ### MongoDB não inicia
 ```bash

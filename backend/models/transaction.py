@@ -78,6 +78,7 @@ class TransactionInDB(TransactionBase):
     card_id: Optional[str] = None  # Optional - using card_index now
     card_index: Optional[int] = None  # Index in user's cards array
     merchant: MerchantInfo
+    recipient_email: Optional[str] = None  # For transfers between users
     
     # User location at transaction time
     user_location: Dict[str, Any]  # {"lat", "lon", "city"}
@@ -88,6 +89,11 @@ class TransactionInDB(TransactionBase):
     risk_score: int  # 0-100
     risk_level: RiskLevel
     risk_factors: Dict[str, Any] = {}  # Detailed risk breakdown
+    
+    # ML Anomaly detection
+    anomaly_detected: bool = False
+    anomaly_score: float = 0.0  # 0-100
+    anomaly_reason: Optional[str] = None
     
     # Status
     status: TransactionStatus
@@ -117,11 +123,15 @@ class Transaction(TransactionBase):
     card_index: Optional[int] = None  # Index in user's cards array
     merchant_id: Optional[str] = None
     merchant_info: Optional[MerchantInfo] = None
+    recipient_email: Optional[str] = None  # For transfers between users
     user_location: Dict[str, Any]  # {"lat", "lon", "city"}
     distance_from_home_km: float
     distance_from_merchant_km: Optional[float] = None
     risk_score: float
     risk_level: RiskLevel
+    anomaly_detected: bool = False
+    anomaly_score: float = 0.0
+    anomaly_reason: Optional[str] = None
     status: TransactionStatus
     liveness_required: bool
     liveness_performed: bool

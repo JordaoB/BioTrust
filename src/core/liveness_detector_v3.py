@@ -95,8 +95,8 @@ class LivenessDetectorV3:
         self.MAR_THRESHOLD = 0.60  # Mouth Aspect Ratio for mouth open (reduced)
         self.SMILE_MOUTH_WIDTH_RATIO = 1.25  # Mouth width increase when smiling (reduced)
         self.EYEBROW_DISTANCE_THRESHOLD = 35  # Eyebrow-eye distance when raised (reduced)
-        self.HEAD_TURN_RATIO_LEFT = 1.25  # Nose-eye ratio for left turn (MUITO SENSÍVEL)
-        self.HEAD_TURN_RATIO_RIGHT = 0.75  # Nose-eye ratio for right turn (MUITO SENSÍVEL)
+        self.HEAD_TURN_RATIO_LEFT = 1.15  # Nose-eye ratio for left turn (MAIS FÁCIL: 1.25→1.15)
+        self.HEAD_TURN_RATIO_RIGHT = 0.80  # Nose-eye ratio for right turn (AJUSTADO: 0.75→0.80)
         self.HEAD_FRONTAL_RANGE = (0.85, 1.15)  # Acceptable frontal range (mais apertado)
         self.CONSEC_FRAMES = 2  # Consecutive frames for blink confirmation
         self.CHALLENGE_ARM_FRAMES = 12  # Require ~0.4s stable frontal pose before each challenge
@@ -644,12 +644,12 @@ class LivenessDetectorV3:
         elif current_challenge == "turn_left":
             if is_left:
                 self.challenge_counter += 1
-                if self.challenge_counter >= challenge_info["required_count"] * 15:
+                if self.challenge_counter >= challenge_info["required_count"] * 8:  # REDUZIDO: 15→8 frames
                     challenge_satisfied = True
         elif current_challenge == "turn_right":
             if is_right:
                 self.challenge_counter += 1
-                if self.challenge_counter >= challenge_info["required_count"] * 15:
+                if self.challenge_counter >= challenge_info["required_count"] * 8:  # REDUZIDO: 15→8 frames
                     challenge_satisfied = True
         elif current_challenge == "eyebrows_up":
             if are_eyebrows_raised:
@@ -1118,9 +1118,6 @@ class LivenessDetectorV3:
                                     self.challenge_counter += 1
                                     if self.challenge_counter >= 15:  # Hold for 0.5 seconds
                                         challenge_satisfied = True
-                            
-                            elif current_challenge == "turn_left":
-                                    self.challenge_counter = 0
                             
                             elif current_challenge == "turn_left":
                                 if not self.must_return_neutral:
