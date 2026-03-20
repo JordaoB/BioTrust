@@ -8,6 +8,8 @@ let currentUser = null;
 let accessToken = null;
 let contacts = [];
 let userCards = [];
+let latestTransactions = [];
+let riskChart = null;
 
 // Location mappings
 const LOCATIONS = {
@@ -16,6 +18,53 @@ const LOCATIONS = {
     'far': { city: 'Porto', lat: 41.1579, lon: -8.6291 },
     'very-far': { city: 'Faro', lat: 37.0194, lon: -7.9322 }
 };
+
+function getBrowserPosition() {
+    return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('Geolocalização não suportada no browser'));
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => resolve(position),
+            (error) => reject(error),
+            {
+                enableHighAccuracy: true,
+                timeout: 7000,
+                maximumAge: 60000,
+            }
+        );
+    });
+}
+
+async function resolveRealtimeLocation() {
+    const pos = await getBrowserPosition();
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/location/reverse?lat=${lat}&lon=${lon}`);
+        const data = await response.json();
+        if (response.ok) {
+            return {
+                city: data.city || 'GPS',
+                country: data.country || 'Unknown',
+                lat,
+                lon,
+            };
+        }
+    } catch (error) {
+        console.warn('Reverse geocoding failed, using raw GPS coordinates', error);
+    }
+
+    return {
+        city: 'GPS',
+        country: 'Unknown',
+        lat,
+        lon,
+    };
+}
 
 // Initialize dashboard
 window.addEventListener('DOMContentLoaded', async () => {
@@ -274,6 +323,7 @@ async function loadTransactions() {
 // Display transactions
 function displayTransactions(transactions) {
     const container = document.getElementById('transactions-container');
+    latestTransactions = transactions || [];
     
     if (!transactions || transactions.length === 0) {
         container.innerHTML = `
@@ -288,7 +338,7 @@ function displayTransactions(transactions) {
         return;
     }
     
-    container.innerHTML = transactions.map(tx => {
+    container.innerHTML = transactions.map((tx, index) => {
         const isExpense = tx.type === 'transfer' || tx.type === 'payment';
         const statusColors = {
             'approved': 'text-green-600',
@@ -355,10 +405,130 @@ function displayTransactions(transactions) {
                     <div class="${statusColors[tx.status] || 'text-gray-600'}" style="font-size: 12px; font-weight: 600;">
                         ${statusIcons[tx.status] || ''} ${tx.status || 'pending'}
                     </div>
+                    <button class="tx-explain-btn" data-index="${index}" style="margin-top: 6px; font-size: 12px; color: #0f766e; font-weight: 700; border: none; background: none; cursor: pointer;">
+                        Ver explicação
+                    </button>
                 </div>
             </div>
         `;
     }).join('');
+
+    document.querySelectorAll('.tx-explain-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.index, 10);
+            const tx = latestTransactions[idx];
+            if (tx) {
+                showRiskExplainModal(tx);
+            }
+        });
+    });
+}
+
+function showRiskExplainModal(transaction) {
+    const modal = document.getElementById('risk-explain-modal');
+    const content = document.getElementById('risk-explain-content');
+
+    const factors = transaction.risk_factors || {};
+    const factorRows = [
+        { key: 'location', label: 'Localização' },
+        { key: 'amount', label: 'Montante' },
+        { key: 'velocity', label: 'Velocity' },
+        { key: 'recipient', label: 'Destinatário' },
+        { key: 'time', label: 'Horário' }
+    ];
+
+    const blockedText = transaction.status === 'rejected' || transaction.status === 'blocked'
+        ? 'BLOQUEADO'
+        : transaction.status === 'pending'
+            ? 'EM ANÁLISE (LIVENESS)'
+            : 'APROVADO';
+
+    const anomalySummary = transaction.anomaly_detected
+        ? `Isolation Forest detetou ${Number(transaction.anomaly_score || 0).toFixed(1)}% de anomalia`
+        : 'Isolation Forest não detetou anomalias críticas';
+
+    const locationReason = (factors.location && factors.location.reason) || transaction.risk_reason || 'Sem detalhe de localização';
+    const reasonLine = `${blockedText}: ${anomalySummary}. ${locationReason}`;
+
+    const bars = factorRows.map(row => {
+        const item = factors[row.key] || {};
+        const score = Number(item.score || 0).toFixed(1);
+        const contribution = Number(item.contribution || 0).toFixed(1);
+        const detail = item.reason || 'Sem detalhe';
+        return `
+            <div class="mb-3">
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="font-semibold text-gray-700">${row.label}</span>
+                    <span class="text-gray-600">score ${score} • impacto ${contribution}</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1">
+                    <div class="bg-gradient-to-r from-emerald-500 to-red-500 h-2.5 rounded-full" style="width: ${Math.min(100, Math.max(0, Number(score)))}%"></div>
+                </div>
+                <div class="text-xs text-gray-500">${detail}</div>
+            </div>
+        `;
+    }).join('');
+
+    content.innerHTML = `
+        <div class="mb-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="text-sm text-gray-500 mb-1">Resumo de decisão</div>
+            <div class="text-lg font-bold text-slate-800">${reasonLine}</div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div class="p-3 rounded-xl bg-white border border-gray-200">
+                <div class="text-xs text-gray-500">Risk Score</div>
+                <div class="text-2xl font-extrabold text-gray-900">${Number(transaction.risk_score || 0).toFixed(1)}/100</div>
+                <div class="text-sm text-gray-600">Nível: ${String(transaction.risk_level || 'N/A').toUpperCase()}</div>
+            </div>
+            <div class="p-3 rounded-xl bg-white border border-gray-200">
+                <canvas id="risk-factor-chart" height="120"></canvas>
+            </div>
+        </div>
+
+        <div class="mb-2 text-sm font-bold text-gray-700">Que fatores pesaram mais</div>
+        ${bars}
+
+        <div class="mt-4 text-xs text-gray-500">
+            TX: ${transaction._id || transaction.transaction_id || 'N/A'} • ${new Date(transaction.created_at || Date.now()).toLocaleString('pt-PT')}
+        </div>
+    `;
+
+    const chartCanvas = document.getElementById('risk-factor-chart');
+    if (chartCanvas && typeof Chart !== 'undefined') {
+        if (riskChart) {
+            riskChart.destroy();
+        }
+        riskChart = new Chart(chartCanvas, {
+            type: 'doughnut',
+            data: {
+                labels: factorRows.map(f => f.label),
+                datasets: [
+                    {
+                        data: factorRows.map(f => Number((factors[f.key] || {}).contribution || 0)),
+                        backgroundColor: ['#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981'],
+                        borderWidth: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 10, font: { size: 10 } }
+                    }
+                },
+                cutout: '65%'
+            }
+        });
+    }
+
+    modal.classList.add('show');
+}
+
+function closeRiskExplainModal() {
+    document.getElementById('risk-explain-modal').classList.remove('show');
 }
 
 // Handle send money
@@ -390,7 +560,16 @@ async function handleSendMoney(event) {
         return;
     }
     
-    const location = LOCATIONS[locationKey];
+    let location = LOCATIONS[locationKey];
+    if (locationKey === 'realtime') {
+        try {
+            location = await resolveRealtimeLocation();
+        } catch (error) {
+            console.warn('Realtime location unavailable, falling back to home location', error);
+            location = LOCATIONS.home;
+            showError('Não foi possível obter GPS real. A usar localização de fallback (Casa).');
+        }
+    }
     
     // Create transaction
     showLoading('Criando transação...');
@@ -482,6 +661,9 @@ function showLivenessVerification(transaction) {
                     <p class="text-gray-600">${result.message}</p>
                 </div>
             `);
+            if (result.transaction) {
+                showRiskExplainModal(result.transaction);
+            }
         }
     })
     .catch(error => {

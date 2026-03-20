@@ -119,7 +119,7 @@ async def health_check():
     }
 
 # Import and register routes
-from backend.routes import users, merchants, transactions, liveness, liveness_stream, auth, cards, observability
+from backend.routes import users, merchants, transactions, liveness, liveness_stream, auth, cards, observability, location
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
@@ -129,6 +129,7 @@ app.include_router(transactions.router, prefix="/api/transactions", tags=["Trans
 app.include_router(liveness.router, prefix="/api/liveness", tags=["Liveness Detection"])
 app.include_router(liveness_stream.router, prefix="/api/liveness-stream", tags=["Liveness Stream"])
 app.include_router(observability.router, prefix="/api/observability", tags=["Observability"])
+app.include_router(location.router, prefix="/api/location", tags=["Location"])
 
 if __name__ == "__main__":
     import uvicorn

@@ -233,6 +233,8 @@ async def create_transaction(
         
         risk_analysis = risk_engine.analyze_transaction(transaction_for_risk)
         risk_score = risk_analysis['risk_score']
+        risk_reason = risk_analysis.get('reason')
+        risk_factors = risk_analysis.get('factors', {})
         
         # ML Anomaly Detection
         is_anomaly = False
@@ -309,6 +311,8 @@ async def create_transaction(
             "distance_from_merchant_km": round(distance_from_merchant, 2) if distance_from_merchant else None,
             "risk_score": round(risk_score, 2),
             "risk_level": risk_level,
+            "risk_reason": risk_reason,
+            "risk_factors": risk_factors,
             "anomaly_detected": bool(is_anomaly),  # Convert numpy bool to Python bool
             "anomaly_score": round(float(anomaly_score), 2),  # Convert numpy float to Python float
             "anomaly_reason": anomaly_reason,

@@ -129,6 +129,8 @@ class Transaction(TransactionBase):
     distance_from_merchant_km: Optional[float] = None
     risk_score: float
     risk_level: RiskLevel
+    risk_reason: Optional[str] = None
+    risk_factors: Dict[str, Any] = {}
     anomaly_detected: bool = False
     anomaly_score: float = 0.0
     anomaly_reason: Optional[str] = None
@@ -136,6 +138,7 @@ class Transaction(TransactionBase):
     liveness_required: bool
     liveness_performed: bool
     liveness_result: Optional[LivenessResult] = None
+    settlement: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
     
