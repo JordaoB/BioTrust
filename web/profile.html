@@ -162,6 +162,10 @@
             align-items: center;
             gap: 30px;
         }
+
+        .navbar-links::-webkit-scrollbar {
+            display: none;
+        }
         
         .navbar-link {
             color: rgba(255, 255, 255, 0.9);
@@ -256,6 +260,56 @@
         
         .header-gradient {
             margin-top: 0px; /* No extra space, starts right after navbar */
+        }
+
+        @media (max-width: 900px) {
+            body {
+                padding-top: 116px;
+            }
+
+            .navbar-content {
+                height: auto;
+                padding: 8px 12px;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+
+            .navbar-brand {
+                justify-content: center;
+                font-size: 20px;
+            }
+
+            .navbar-links {
+                gap: 8px;
+                overflow-x: auto;
+                scrollbar-width: none;
+                padding-bottom: 4px;
+            }
+
+            .navbar-link {
+                white-space: nowrap;
+                font-size: 13px;
+                padding: 6px 10px;
+            }
+
+            .user-menu {
+                margin-left: auto;
+            }
+
+            .user-button {
+                padding: 6px 10px;
+            }
+
+            .header-gradient {
+                padding: 18px 14px 70px;
+            }
+
+            .profile-avatar {
+                width: 84px;
+                height: 84px;
+                font-size: 36px;
+            }
         }
     </style>
 </head>
@@ -357,7 +411,7 @@
         <div class="profile-card fade-in" style="animation-delay: 0.1s;">
             <h3 class="text-sm font-semibold text-gray-500 mb-3 uppercase">Estatísticas</h3>
             
-            <div class="grid grid-cols-2 gap-4 text-center">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
                 <div style="background: #f0fdf4; padding: 16px; border-radius: 12px;">
                     <div class="text-2xl font-bold text-green-600" id="total-cards">0</div>
                     <div class="text-xs text-gray-600 mt-1">Cartões</div>

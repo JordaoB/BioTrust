@@ -189,6 +189,10 @@
             gap: 24px;
             align-items: center;
         }
+
+        .navbar-links::-webkit-scrollbar {
+            display: none;
+        }
         
         .navbar-link {
             color: #666;
@@ -268,6 +272,61 @@
         body {
             padding-top: 60px; /* Space for fixed navbar */
         }
+
+        @media (max-width: 900px) {
+            body {
+                padding-top: 120px;
+            }
+
+            .navbar-content {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+                padding: 0 12px;
+            }
+
+            .navbar-brand {
+                justify-content: center;
+                font-size: 20px;
+            }
+
+            .navbar-links {
+                gap: 8px;
+                overflow-x: auto;
+                scrollbar-width: none;
+                padding-bottom: 4px;
+            }
+
+            .navbar-link {
+                white-space: nowrap;
+                font-size: 13px;
+                padding: 8px 10px;
+            }
+
+            .user-menu {
+                margin-left: auto;
+            }
+
+            .user-button {
+                padding: 8px 10px;
+            }
+
+            .card-slider {
+                padding: 0 12px;
+            }
+
+            .payment-card {
+                min-width: 280px;
+                height: 210px;
+                padding: 16px;
+            }
+
+            .modal-content {
+                width: 95%;
+                padding: 16px;
+                border-radius: 16px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -332,7 +391,7 @@
     
     <!-- Action Buttons -->
     <div class="px-6 mb-6">
-        <div class="grid grid-cols-3 gap-4">
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <button onclick="openSendMoneyModal()" class="action-btn">
                 <div class="text-green-600 text-3xl mb-2">
                     <i class="fas fa-paper-plane"></i>
@@ -347,7 +406,7 @@
                 <p class="text-sm font-semibold text-gray-800">Pedir</p>
             </button>
             
-            <button onclick="viewHistory()" class="action-btn">
+            <button onclick="viewHistory()" class="action-btn col-span-2 sm:col-span-1">
                 <div class="text-purple-600 text-3xl mb-2">
                     <i class="fas fa-history"></i>
                 </div>
@@ -383,11 +442,11 @@
     </div>
     
     <!-- Send Money Modal -->
-    <div id="send-money-modal" class="modal">
+    <div id="send-money-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="send-money-title">
         <div class="modal-content">
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">Enviar Dinheiro</h2>
-                <button onclick="closeSendMoneyModal()" class="text-gray-500 hover:text-gray-700">
+                <h2 id="send-money-title" class="text-2xl font-bold text-gray-800">Enviar Dinheiro</h2>
+                <button onclick="closeSendMoneyModal()" class="text-gray-500 hover:text-gray-700" aria-label="Fechar modal de envio">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
@@ -462,11 +521,11 @@
     </div>
     
     <!-- Add Card Modal -->
-    <div id="add-card-modal" class="modal">
+    <div id="add-card-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="add-card-title">
         <div class="modal-content">
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">Adicionar Cartão</h2>
-                <button onclick="closeAddCardModal()" class="text-gray-500 hover:text-gray-700">
+                <h2 id="add-card-title" class="text-2xl font-bold text-gray-800">Adicionar Cartão</h2>
+                <button onclick="closeAddCardModal()" class="text-gray-500 hover:text-gray-700" aria-label="Fechar modal de cartão">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
@@ -557,11 +616,11 @@
     </div>
 
     <!-- Risk Explainability Modal -->
-    <div id="risk-explain-modal" class="modal">
+    <div id="risk-explain-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="risk-explain-title">
         <div class="modal-content">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold text-gray-800">Explicabilidade de Risco</h2>
-                <button onclick="closeRiskExplainModal()" class="text-gray-500 hover:text-gray-700">
+                <h2 id="risk-explain-title" class="text-2xl font-bold text-gray-800">Explicabilidade de Risco</h2>
+                <button onclick="closeRiskExplainModal()" class="text-gray-500 hover:text-gray-700" aria-label="Fechar modal de risco">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>

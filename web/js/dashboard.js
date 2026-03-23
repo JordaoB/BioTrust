@@ -141,6 +141,27 @@ document.addEventListener('click', (e) => {
     if (userMenu && !userMenu.contains(e.target)) {
         document.getElementById('user-dropdown').classList.remove('show');
     }
+
+    const modalIds = ['send-money-modal', 'add-card-modal', 'risk-explain-modal'];
+    modalIds.forEach((modalId) => {
+        const modal = document.getElementById(modalId);
+        if (modal && e.target === modal) {
+            modal.classList.remove('show');
+        }
+    });
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') {
+        return;
+    }
+
+    ['send-money-modal', 'add-card-modal', 'risk-explain-modal'].forEach((modalId) => {
+        const modal = document.getElementById(modalId);
+        if (modal && modal.classList.contains('show')) {
+            modal.classList.remove('show');
+        }
+    });
 });
 
 // Load user data

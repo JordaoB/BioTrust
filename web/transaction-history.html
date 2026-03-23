@@ -117,6 +117,10 @@
             align-items: center;
             gap: 30px;
         }
+
+        .navbar-links::-webkit-scrollbar {
+            display: none;
+        }
         
         .navbar-link {
             color: rgba(255, 255, 255, 0.9);
@@ -219,6 +223,51 @@
             z-index: 99;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
+
+        @media (max-width: 900px) {
+            body {
+                padding-top: 136px;
+            }
+
+            .navbar-content {
+                height: auto;
+                padding: 8px 12px;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+
+            .navbar-brand {
+                justify-content: center;
+                font-size: 20px;
+            }
+
+            .navbar-links {
+                gap: 8px;
+                overflow-x: auto;
+                scrollbar-width: none;
+                padding-bottom: 4px;
+            }
+
+            .navbar-link {
+                white-space: nowrap;
+                font-size: 13px;
+                padding: 6px 10px;
+            }
+
+            .user-menu {
+                margin-left: auto;
+            }
+
+            .user-button {
+                padding: 6px 10px;
+            }
+
+            .filters-container {
+                top: 104px;
+                padding: 8px 12px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -264,10 +313,10 @@
     <!-- Filters -->
     <div class="filters-container">
         <div class="flex gap-2 overflow-x-auto" style="scrollbar-width: none; -ms-overflow-style: none; max-width: 1200px; margin: 0 auto;">
-            <button class="filter-btn active" onclick="filterTransactions('all')">Todas</button>
-            <button class="filter-btn" onclick="filterTransactions('approved')">Aprovadas</button>
-            <button class="filter-btn" onclick="filterTransactions('pending')">Pendentes</button>
-            <button class="filter-btn" onclick="filterTransactions('rejected')">Rejeitadas</button>
+            <button class="filter-btn active" onclick="filterTransactions('all', this)">Todas</button>
+            <button class="filter-btn" onclick="filterTransactions('approved', this)">Aprovadas</button>
+            <button class="filter-btn" onclick="filterTransactions('pending', this)">Pendentes</button>
+            <button class="filter-btn" onclick="filterTransactions('rejected', this)">Rejeitadas</button>
         </div>
     </div>
     
@@ -275,7 +324,7 @@
     <div style="padding: 20px; max-width: 600px; margin: 0 auto;">
         <!-- Stats Summary -->
         <div style="background: white; border-radius: 16px; padding: 20px; margin-bottom: 20px;">
-            <div class="grid grid-cols-3 gap-4 text-center">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
                 <div>
                     <div class="text-2xl font-bold text-gray-800" id="total-count">0</div>
                     <div class="text-xs text-gray-500">Total</div>
@@ -362,12 +411,14 @@
         }
         
         // Filter transactions
-        function filterTransactions(filter) {
+        function filterTransactions(filter, buttonEl) {
             currentFilter = filter;
             
             // Update active button
             document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            if (buttonEl) {
+                buttonEl.classList.add('active');
+            }
             
             // Filter and display
             let filtered = allTransactions;

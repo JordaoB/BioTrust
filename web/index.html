@@ -126,6 +126,29 @@
         .country-code-select option {
             padding: 8px;
         }
+
+        @media (max-width: 640px) {
+            .auth-card {
+                border-radius: 18px;
+            }
+
+            .phone-input-group {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .country-code-select {
+                width: 100%;
+            }
+
+            .card-animation {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+        }
     </style>
 </head>
 <body class="flex items-center justify-center p-4">

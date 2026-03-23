@@ -324,6 +324,26 @@ open_web.bat
 # http://localhost:8000/static/login.html
 ```
 
+### 7️⃣ Publicar com Link (GitHub + Render)
+
+Para abrir no telemóvel fora da tua rede local, publica o backend+frontend com URL pública.
+
+1. Fazer push do projeto para GitHub.
+2. Criar conta em Render e selecionar **New Web Service**.
+3. Ligar ao repositório GitHub.
+4. Configurar:
+- Runtime: **Docker**
+- Branch: `main`
+- Health check: `/api/observability/metrics`
+5. Definir variáveis de ambiente (produção):
+- `MONGODB_URI` (preferencialmente MongoDB Atlas)
+- `SECRET_KEY`
+- `ENCRYPTION_KEY`
+- `CORS_ORIGINS` com o domínio público do Render
+6. Deploy e abrir o URL gerado (`https://...onrender.com`) no telemóvel.
+
+**Nota:** O frontend já serve em `/static`, por isso basta um único serviço para ter login/dashboard acessível por link.
+
 ---
 
 ## 🎯 Demo
