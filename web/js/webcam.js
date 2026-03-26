@@ -172,6 +172,7 @@ async function startLivenessVerification(transactionId) {
     
     try {
         console.log('🔍 Iniciando verificação de liveness com detector V3...');
+        showLivenessModal();
         
         // 1. Iniciar webcam primeiro
         await initWebcam();
@@ -307,9 +308,10 @@ async function completeLivenessVerification(sessionId, success) {
         // Fechar modal
         hideLivenessModal();
         
-        // Atualizar transação no frontend (mostrar resultado)
-        if (result.transaction) {
-            // Chama função global do app.js
+        // Callback opcional para páginas que integram este módulo
+        if (typeof window.onLivenessCompleted === 'function') {
+            window.onLivenessCompleted(result);
+        } else if (result.transaction) {
             if (typeof window.showTransactionResult === 'function') {
                 window.showTransactionResult(result.transaction, true);
             } else {

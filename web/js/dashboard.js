@@ -645,53 +645,40 @@ async function handleSendMoney(event) {
 
 // Show liveness verification
 function showLivenessVerification(transaction) {
-    showLoading(`
-        <div class="text-center">
-            <div class="text-6xl mb-4">🔐</div>
-            <h3 class="text-2xl font-bold mb-4">Verificação Biométrica Requerida</h3>
-            <p class="text-gray-600 mb-2">Risco: ${transaction.risk_score}/100</p>
-            <p class="text-gray-600 mb-6">Uma janela OpenCV vai abrir no servidor</p>
-            <div class="animate-pulse">Aguarde...</div>
-        </div>
-    `);
-    
-    // Call liveness verification endpoint
-    fetch(`${API_BASE}/api/liveness/verify/${transaction._id}`, {
-        method: 'POST'
-    })
-    .then(res => res.json())
-    .then(result => {
-        hideLoading();
-        
+    if (typeof startLivenessVerification !== 'function') {
+        showError('Módulo de webcam não carregado. Atualize a página e tente novamente.');
+        return;
+    }
+
+    window.onLivenessCompleted = async (result) => {
         if (result.success) {
             showSuccess(`
                 <div class="text-center">
                     <div class="text-6xl mb-4">✅</div>
                     <h3 class="text-2xl font-bold mb-2">Verificação Completa!</h3>
-                    <p class="text-gray-600">Transação de €${transaction.amount.toFixed(2)} aprovada</p>
-                    <p class="text-sm text-gray-500 mt-2">Challenges completados: ${result.liveness_details?.challenges_completed?.length || 0}</p>
+                    <p class="text-gray-600">Transação aprovada com sucesso</p>
                 </div>
             `);
-            loadUserData();
-            loadTransactions();
         } else {
             showError(`
                 <div class="text-center">
                     <div class="text-6xl mb-4">❌</div>
                     <h3 class="text-2xl font-bold mb-2">Verificação Falhou</h3>
-                    <p class="text-gray-600">${result.message}</p>
+                    <p class="text-gray-600">${result.message || 'Não foi possível validar a liveness.'}</p>
                 </div>
             `);
+
             if (result.transaction) {
                 showRiskExplainModal(result.transaction);
             }
         }
-    })
-    .catch(error => {
-        hideLoading();
-        showError('Erro na verificação biométrica');
-        console.error('Liveness error:', error);
-    });
+
+        await loadUserData();
+        await loadCards();
+        await loadTransactions();
+    };
+
+    startLivenessVerification(transaction._id);
 }
 
 // Handle add card
