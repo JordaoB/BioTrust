@@ -336,7 +336,7 @@ Para abrir no telemóvel fora da tua rede local, publica o backend+frontend com 
 - Branch: `main`
 - Health check: `/api/observability/metrics`
 5. Definir variáveis de ambiente (produção):
-- `MONGODB_URI` (preferencialmente MongoDB Atlas)
+- `MONGODB_URL` (preferencialmente MongoDB Atlas)
 - `SECRET_KEY`
 - `ENCRYPTION_KEY`
 - `CORS_ORIGINS` com o domínio público do Render

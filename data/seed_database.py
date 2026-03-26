@@ -5,6 +5,7 @@ Populates MongoDB with initial merchants and users
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -37,11 +38,15 @@ def hash_cvv(cvv: str) -> str:
 async def seed_database():
     """Main seeding function"""
     
-    # Connect to MongoDB
-    client = AsyncIOMotorClient("mongodb://localhost:27017")
-    db = client["biotrust"]
+    # Connect to MongoDB (supports local and cloud via env vars)
+    mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    mongodb_db_name = os.getenv("MONGODB_DB_NAME", "biotrust")
+    client = AsyncIOMotorClient(mongodb_url)
+    db = client[mongodb_db_name]
     
     print("🌱 Starting database seeding...\n")
+    print(f"🔌 MongoDB URL: {'Atlas/Cloud' if 'mongodb+srv://' in mongodb_url else 'Localhost'}")
+    print(f"🗄️  Database: {mongodb_db_name}\n")
     
     # Load seed data
     data_dir = Path(__file__).parent
