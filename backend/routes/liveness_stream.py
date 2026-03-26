@@ -238,7 +238,7 @@ async def complete_liveness(
         }
     )
     
-    if update_result.modified_count == 0:
+    if update_result.matched_count == 0:
         raise HTTPException(status_code=500, detail="Failed to update transaction")
     
     # Buscar transação atualizada

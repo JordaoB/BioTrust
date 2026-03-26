@@ -53,8 +53,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         else:
             limit = self.requests_per_minute
 
+        bucket = "liveness_frame" if path.startswith("/api/liveness-stream/frame/") else "default"
+        key = f"{client_ip}:{bucket}"
+
         with self._lock:
-            queue = self._requests[client_ip]
+            queue = self._requests[key]
             cutoff = now - self.window
             while queue and queue[0] < cutoff:
                 queue.popleft()

@@ -59,9 +59,9 @@ async function initWebcam() {
         // Conecta o stream ao elemento <video>
         webcamVideo = document.getElementById('webcam');
         webcamVideo.srcObject = webcamStream;
-        // Keep preview non-mirrored so left/right instructions match user movement.
-        webcamVideo.style.transform = 'none';
-        webcamVideo.style.webkitTransform = 'none';
+        // Mirror mode: natural front-camera behavior like a mirror.
+        webcamVideo.style.transform = 'scaleX(-1)';
+        webcamVideo.style.webkitTransform = 'scaleX(-1)';
         
         console.log('✅ Webcam iniciada com sucesso');
         return webcamStream;
@@ -327,7 +327,14 @@ async function completeLivenessVerification(sessionId, success) {
         });
         
         if (!response.ok) {
-            throw new Error('Falha ao finalizar verificação');
+            let errorDetail = `HTTP ${response.status}`;
+            try {
+                const err = await response.json();
+                errorDetail = err.detail || errorDetail;
+            } catch (_) {
+                // Ignore parse errors and keep fallback detail.
+            }
+            throw new Error(`Falha ao finalizar verificação: ${errorDetail}`);
         }
         
         const result = await response.json();
