@@ -480,7 +480,7 @@ class LivenessDetectorV3:
             return {"status": "failed", "feedback": "Session not started - call start_web_session() first"}
         
         self.frame_count_web += 1
-        frame = cv2.flip(frame, 1)  # Mirror like desktop version
+        # Keep non-mirrored processing so left/right instructions match real movement.
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.face_mesh.process(rgb)
         
@@ -822,7 +822,7 @@ class LivenessDetectorV3:
                     continue  # Skip this frame but don't abort yet
                 
                 frame_count += 1
-                frame = cv2.flip(frame, 1)
+                # Keep non-mirrored processing so left/right instructions match real movement.
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 results = self.face_mesh.process(rgb)
                 
