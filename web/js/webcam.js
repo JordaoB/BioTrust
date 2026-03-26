@@ -59,6 +59,9 @@ async function initWebcam() {
         // Conecta o stream ao elemento <video>
         webcamVideo = document.getElementById('webcam');
         webcamVideo.srcObject = webcamStream;
+        // Keep preview non-mirrored so left/right instructions match user movement.
+        webcamVideo.style.transform = 'none';
+        webcamVideo.style.webkitTransform = 'none';
         
         console.log('✅ Webcam iniciada com sucesso');
         return webcamStream;
