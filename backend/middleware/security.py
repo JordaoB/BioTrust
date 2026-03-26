@@ -44,6 +44,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         client_ip = request.client.host if request.client else "unknown"
         now = datetime.utcnow()
+        path = request.url.path
+
+        # Liveness frame streaming naturally produces many requests per minute.
+        # Give this endpoint a higher cap to avoid blocking the full session.
+        if path.startswith("/api/liveness-stream/frame/"):
+            limit = max(self.requests_per_minute, 1800)
+        else:
+            limit = self.requests_per_minute
 
         with self._lock:
             queue = self._requests[client_ip]
@@ -51,12 +59,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             while queue and queue[0] < cutoff:
                 queue.popleft()
 
-            if len(queue) >= self.requests_per_minute:
+            if len(queue) >= limit:
                 return JSONResponse(
                     status_code=429,
                     content={
                         "detail": "Rate limit exceeded. Try again later.",
-                        "limit": self.requests_per_minute,
+                        "limit": limit,
                         "window_seconds": 60,
                     },
                 )

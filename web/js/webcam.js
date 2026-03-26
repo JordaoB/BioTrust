@@ -126,6 +126,10 @@ function captureFrame() {
         console.warn('⚠️ Vídeo não inicializado');
         return null;
     }
+
+    if (!webcamVideo.videoWidth || !webcamVideo.videoHeight) {
+        return null;
+    }
     
     // Cria um canvas temporário para capturar o frame
     const canvas = document.createElement('canvas');
@@ -219,7 +223,7 @@ async function startLivenessVerification(transactionId) {
 function startFrameStream(sessionId) {
     isCapturing = true;
     let framesSent = 0;
-    const FPS = 10; // 10 frames por segundo (reduz carga)
+    const FPS = 4; // Lower frame rate to reduce mobile/network pressure
     const INTERVAL_MS = 1000 / FPS;
     
     console.log(`🎥 Iniciando stream de frames (${FPS} fps)`);
@@ -248,6 +252,31 @@ function startFrameStream(sessionId) {
             });
             
             if (!response.ok) {
+                if (response.status === 429) {
+                    console.error('❌ Rate limit atingido durante liveness stream');
+                    clearInterval(captureInterval);
+                    isCapturing = false;
+                    showError('Muitos pedidos em simultâneo. Aguarde alguns segundos e tente novamente.');
+                    stopWebcam();
+                    hideLivenessModal();
+                    return;
+                }
+
+                if (response.status === 404) {
+                    console.error('❌ Sessão de liveness expirada/não encontrada');
+                    clearInterval(captureInterval);
+                    isCapturing = false;
+                    showError('Sessão de verificação expirada. Inicie novamente a transação.');
+                    stopWebcam();
+                    hideLivenessModal();
+                    return;
+                }
+
+                if (response.status === 400) {
+                    // Transient frame decode issue; skip this frame only.
+                    return;
+                }
+
                 console.error('❌ Erro ao processar frame:', response.statusText);
                 return;
             }
