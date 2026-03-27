@@ -1,4 +1,4 @@
-let riskStreamChart = null;
+﻿let riskStreamChart = null;
 let statusChart = null;
 
 async function fetchJSON(path) {
@@ -38,7 +38,7 @@ function renderAlerts(alertData) {
     const alerts = alertData.active_alerts || [];
 
     if (!alerts.length) {
-        container.innerHTML = '<div class="text-sm text-emerald-300">Sem alertas ativos. Sistema estável.</div>';
+        container.innerHTML = '<div class="text-sm text-emerald-300">No active alerts. System stable.</div>';
         return;
     }
 
@@ -55,7 +55,7 @@ function renderFeed(feedData) {
     const container = document.getElementById('fraud-feed');
 
     if (!feed.length) {
-        container.innerHTML = '<div class="text-sm text-slate-300">Sem transações recentes.</div>';
+        container.innerHTML = '<div class="text-sm text-slate-300">No recent transactions.</div>';
         return;
     }
 
@@ -73,17 +73,17 @@ function renderFeed(feedData) {
                         <div class="text-xs text-slate-400">${new Date(item.created_at).toLocaleString('pt-PT')}</div>
                     </div>
                     <div class="text-right">
-                        <div class="text-lg font-black">€${Number(item.amount || 0).toFixed(2)}</div>
+                        <div class="text-lg font-black">â‚¬${Number(item.amount || 0).toFixed(2)}</div>
                         <div class="text-xs ${statusColor}">${String(item.status).toUpperCase()}</div>
                     </div>
                 </div>
                 <div class="flex flex-wrap items-center gap-2 mb-2">
                     ${anomalyBadge}
-                    <span class="px-2 py-1 rounded-full text-xs bg-sky-700/30 text-sky-200">Risco ${Number(item.risk_score || 0).toFixed(1)}</span>
+                    <span class="px-2 py-1 rounded-full text-xs bg-sky-700/30 text-sky-200">Risk ${Number(item.risk_score || 0).toFixed(1)}</span>
                     <span class="px-2 py-1 rounded-full text-xs bg-indigo-700/30 text-indigo-200">${String(item.risk_level).toUpperCase()}</span>
                     <span class="px-2 py-1 rounded-full text-xs bg-purple-700/30 text-purple-200">Liveness ${item.liveness_performed ? (item.liveness_success ? 'PASS' : 'FAIL') : 'N/A'}</span>
                 </div>
-                <div class="text-xs text-slate-300">${item.risk_reason || item.anomaly_reason || 'Sem explicação adicional'}</div>
+                <div class="text-xs text-slate-300">${item.risk_reason || item.anomaly_reason || 'No additional explanation'}</div>
             </div>
         `;
     }).join('');
@@ -177,3 +177,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     await refreshDashboard();
     setInterval(refreshDashboard, 4000);
 });
+
+
+

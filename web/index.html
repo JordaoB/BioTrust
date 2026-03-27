@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
@@ -166,7 +166,7 @@
         <div class="auth-card p-8 card-animation">
             <!-- Login Form -->
             <div id="login-form">
-                <h2 class="text-2xl font-bold text-gray-800 mb-6">Bem-vindo</h2>
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Welcome</h2>
                 
                 <form onsubmit="handleLogin(event)">
                     <div class="mb-4">
@@ -190,7 +190,7 @@
                             type="password" 
                             id="login-password"
                             class="w-full px-4 py-3 rounded-xl input-field focus:outline-none"
-                            placeholder="••••••••"
+                            placeholder="********"
                             required
                         >
                     </div>
@@ -199,7 +199,7 @@
                         type="submit"
                         class="w-full btn-mbway text-white py-3 rounded-xl font-semibold mb-4"
                     >
-                        Entrar
+                        Sign In
                     </button>
                 </form>
                 
@@ -208,14 +208,14 @@
                         onclick="showRegisterForm()"
                         class="text-sm text-gray-600 hover:text-gray-800"
                     >
-                        Não tem conta? <span class="font-semibold" style="color: var(--mbway-green);">Criar Conta</span>
+                        Don't have an account? <span class="font-semibold" style="color: var(--mbway-green);">Create Account</span>
                     </button>
                 </div>
             </div>
             
             <!-- Register Form (Hidden) -->
             <div id="register-form" class="hidden">
-                <h2 class="text-2xl font-bold text-gray-800 mb-6">Criar Conta</h2>
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Create Account</h2>
                 
                 <form onsubmit="handleRegister(event)">
                     <div class="mb-4">
@@ -226,7 +226,7 @@
                             type="text" 
                             id="register-name"
                             class="w-full px-4 py-3 rounded-xl input-field focus:outline-none"
-                            placeholder="João Silva"
+                            placeholder="John Doe"
                             required
                         >
                     </div>
@@ -246,24 +246,24 @@
                     
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-gray-700 mb-2">
-                            <i class="fas fa-phone mr-2"></i>Telemóvel
+                            <i class="fas fa-phone mr-2"></i>Phone
                         </label>
                         <div class="phone-input-group">
                             <select id="register-country-code" class="country-code-select" required>
-                                <option value="+351" selected>🇵🇹 +351</option>
-                                <option value="+34">🇪🇸 +34</option>
-                                <option value="+33">🇫🇷 +33</option>
-                                <option value="+44">🇬🇧 +44</option>
-                                <option value="+49">🇩🇪 +49</option>
-                                <option value="+39">🇮🇹 +39</option>
-                                <option value="+32">🇧🇪 +32</option>
-                                <option value="+31">🇳🇱 +31</option>
-                                <option value="+41">🇨🇭 +41</option>
-                                <option value="+43">🇦🇹 +43</option>
-                                <option value="+1">🇺🇸 +1</option>
-                                <option value="+55">🇧🇷 +55</option>
-                                <option value="+244">🇦🇴 +244</option>
-                                <option value="+238">🇨🇻 +238</option>
+                                <option value="+351" selected>ðŸ‡µðŸ‡¹ +351</option>
+                                <option value="+34">ðŸ‡ªðŸ‡¸ +34</option>
+                                <option value="+33">ðŸ‡«ðŸ‡· +33</option>
+                                <option value="+44">ðŸ‡¬ðŸ‡§ +44</option>
+                                <option value="+49">ðŸ‡©ðŸ‡ª +49</option>
+                                <option value="+39">ðŸ‡®ðŸ‡¹ +39</option>
+                                <option value="+32">ðŸ‡§ðŸ‡ª +32</option>
+                                <option value="+31">ðŸ‡³ðŸ‡± +31</option>
+                                <option value="+41">ðŸ‡¨ðŸ‡­ +41</option>
+                                <option value="+43">ðŸ‡¦ðŸ‡¹ +43</option>
+                                <option value="+1">ðŸ‡ºðŸ‡¸ +1</option>
+                                <option value="+55">ðŸ‡§ðŸ‡· +55</option>
+                                <option value="+244">ðŸ‡¦ðŸ‡´ +244</option>
+                                <option value="+238">ðŸ‡¨ðŸ‡» +238</option>
                             </select>
                             <input 
                                 type="tel" 
@@ -284,7 +284,7 @@
                             type="password" 
                             id="register-password"
                             class="w-full px-4 py-3 rounded-xl input-field focus:outline-none"
-                            placeholder="Mínimo 6 caracteres"
+                            placeholder="Minimum 6 characters"
                             minlength="6"
                             required
                         >
@@ -294,7 +294,7 @@
                         type="submit"
                         class="w-full btn-mbway text-white py-3 rounded-xl font-semibold mb-4"
                     >
-                        Criar Conta
+                        Create Account
                     </button>
                 </form>
                 
@@ -303,7 +303,7 @@
                         onclick="showLoginForm()"
                         class="text-sm text-gray-600 hover:text-gray-800"
                     >
-                        Já tem conta? <span class="font-semibold" style="color: var(--mbway-green);">Entrar</span>
+                        Already have an account? <span class="font-semibold" style="color: var(--mbway-green);">Sign In</span>
                     </button>
                 </div>
             </div>
@@ -314,7 +314,7 @@
             <p>TecStorm '26 Hackathon</p>
             <p class="mt-1">
                 <i class="fas fa-shield-alt mr-1"></i>
-                Privacy-by-Design: Nenhum dado biométrico é armazenado
+                Privacy-by-Design: No biometric data is stored
             </p>
         </div>
     </div>
@@ -323,3 +323,6 @@
     <script src="/static/js/auth.js?v=1"></script>
 </body>
 </html>
+
+
+

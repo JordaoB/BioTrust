@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
@@ -343,10 +343,10 @@
                     <i class="fas fa-home mr-1"></i> Dashboard
                 </a>
                 <a href="/static/cards.html" class="navbar-link">
-                    <i class="fas fa-credit-card mr-1"></i> Cartões
+                    <i class="fas fa-credit-card mr-1"></i> Cards
                 </a>
                 <a href="/static/transaction-history.html" class="navbar-link">
-                    <i class="fas fa-history mr-1"></i> Histórico
+                    <i class="fas fa-history mr-1"></i> History
                 </a>
                 <a href="/static/admin-fraud.html" class="navbar-link">
                     <i class="fas fa-shield-halved mr-1"></i> Fraud Ops
@@ -361,10 +361,10 @@
                     
                     <div class="user-dropdown" id="user-dropdown">
                         <a href="/static/profile.html">
-                            <i class="fas fa-user mr-2"></i> Meu Perfil
+                            <i class="fas fa-user mr-2"></i> My Profile
                         </a>
                         <a href="#" onclick="logout()" class="logout">
-                            <i class="fas fa-sign-out-alt mr-2"></i> Sair
+                            <i class="fas fa-sign-out-alt mr-2"></i> Sign Out
                         </a>
                     </div>
                 </div>
@@ -375,16 +375,16 @@
     <!-- Cards Slider -->
     <div class="mt-6 mb-6">
         <div class="px-6 mb-4 flex justify-between items-center">
-            <h3 class="text-lg font-semibold text-gray-800">Meus Cartões</h3>
+            <h3 class="text-lg font-semibold text-gray-800">My Cards</h3>
             <button onclick="openAddCardModal()" class="text-green-600 text-sm font-semibold">
-                <i class="fas fa-plus mr-1"></i> Adicionar
+                <i class="fas fa-plus mr-1"></i> Add
             </button>
         </div>
         
         <div class="card-slider" id="cards-container">
             <!-- Cards will be loaded here -->
             <div class="flex items-center justify-center" style="min-width: 320px">
-                <p class="text-gray-500">Carregando cartões...</p>
+                <p class="text-gray-500">Loading cards...</p>
             </div>
         </div>
     </div>
@@ -396,30 +396,30 @@
                 <div class="text-green-600 text-3xl mb-2">
                     <i class="fas fa-paper-plane"></i>
                 </div>
-                <p class="text-sm font-semibold text-gray-800">Enviar</p>
+                <p class="text-sm font-semibold text-gray-800">Send</p>
             </button>
             
             <button onclick="showComingSoon()" class="action-btn">
                 <div class="text-blue-600 text-3xl mb-2">
                     <i class="fas fa-hand-holding-usd"></i>
                 </div>
-                <p class="text-sm font-semibold text-gray-800">Pedir</p>
+                <p class="text-sm font-semibold text-gray-800">Request</p>
             </button>
             
             <button onclick="viewHistory()" class="action-btn col-span-2 sm:col-span-1">
                 <div class="text-purple-600 text-3xl mb-2">
                     <i class="fas fa-history"></i>
                 </div>
-                <p class="text-sm font-semibold text-gray-800">Histórico</p>
+                <p class="text-sm font-semibold text-gray-800">History</p>
             </button>
         </div>
     </div>
     
     <!-- Recent Transactions -->
     <div class="px-6 mb-6">
-        <h3 class="text-lg font-semibold text-gray-800 mb-4">Transações Recentes</h3>
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">Recent Transactions</h3>
         <div id="transactions-container">
-            <p class="text-gray-500 text-center py-8">Nenhuma transação ainda</p>
+            <p class="text-gray-500 text-center py-8">No transactions yet</p>
         </div>
     </div>
     
@@ -428,15 +428,15 @@
         <div class="flex">
             <div class="nav-item active" onclick="switchTab('home')">
                 <i class="fas fa-home text-2xl mb-1"></i>
-                <p class="text-xs font-medium">Início</p>
+                <p class="text-xs font-medium">Home</p>
             </div>
             <div class="nav-item" onclick="switchTab('cards')">
                 <i class="fas fa-credit-card text-2xl mb-1"></i>
-                <p class="text-xs font-medium">Cartões</p>
+                <p class="text-xs font-medium">Cards</p>
             </div>
             <div class="nav-item" onclick="switchTab('profile')">
                 <i class="fas fa-user text-2xl mb-1"></i>
-                <p class="text-xs font-medium">Perfil</p>
+                <p class="text-xs font-medium">Profile</p>
             </div>
         </div>
     </div>
@@ -445,8 +445,8 @@
     <div id="send-money-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="send-money-title">
         <div class="modal-content">
             <div class="flex justify-between items-center mb-6">
-                <h2 id="send-money-title" class="text-2xl font-bold text-gray-800">Enviar Dinheiro</h2>
-                <button onclick="closeSendMoneyModal()" class="text-gray-500 hover:text-gray-700" aria-label="Fechar modal de envio">
+                <h2 id="send-money-title" class="text-2xl font-bold text-gray-800">Send Money</h2>
+                <button onclick="closeSendMoneyModal()" class="text-gray-500 hover:text-gray-700" aria-label="Close send modal">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
@@ -454,33 +454,33 @@
             <form id="send-money-form" onsubmit="handleSendMoney(event)">
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-2">
-                        <i class="fas fa-user mr-2"></i>Destinatário
+                        <i class="fas fa-user mr-2"></i>Recipient
                     </label>
                     <select 
                         id="recipient-select"
                         class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
                         required
                     >
-                        <option value="">Selecione um contacto</option>
+                        <option value="">Select a contact</option>
                     </select>
                 </div>
                 
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-2">
-                        <i class="fas fa-credit-card mr-2"></i>Cartão
+                        <i class="fas fa-credit-card mr-2"></i>Card
                     </label>
                     <select 
                         id="card-select"
                         class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
                         required
                     >
-                        <option value="">Selecione um cartão</option>
+                        <option value="">Select a card</option>
                     </select>
                 </div>
                 
                 <div class="mb-4">
                     <label class="block text-sm font-medium text-gray-700 mb-2">
-                        <i class="fas fa-euro-sign mr-2"></i>Valor
+                        <i class="fas fa-euro-sign mr-2"></i>Amount
                     </label>
                     <input 
                         type="number" 
@@ -495,18 +495,18 @@
                 
                 <div class="mb-6">
                     <label class="block text-sm font-medium text-gray-700 mb-2">
-                        <i class="fas fa-map-marker-alt mr-2"></i>Localização
+                        <i class="fas fa-map-marker-alt mr-2"></i>Location
                     </label>
                     <select 
                         id="location-select"
                         class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
                         required
                     >
-                        <option value="realtime">GPS Real (Atual)</option>
-                        <option value="home">Casa (Lisboa)</option>
-                        <option value="nearby">Proximidade (20-50km)</option>
-                        <option value="far">Longe (200-300km)</option>
-                        <option value="very-far">Muito Longe (500km+)</option>
+                        <option value="realtime">Real-time GPS (Current)</option>
+                        <option value="home">Home (Lisbon)</option>
+                        <option value="nearby">Nearby (20-50km)</option>
+                        <option value="far">Far (200-300km)</option>
+                        <option value="very-far">Very Far (500km+)</option>
                     </select>
                 </div>
                 
@@ -514,7 +514,7 @@
                     type="submit"
                     class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold transition"
                 >
-                    Enviar
+                    Send
                 </button>
             </form>
         </div>
@@ -524,15 +524,15 @@
     <div id="add-card-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="add-card-title">
         <div class="modal-content">
             <div class="flex justify-between items-center mb-6">
-                <h2 id="add-card-title" class="text-2xl font-bold text-gray-800">Adicionar Cartão</h2>
-                <button onclick="closeAddCardModal()" class="text-gray-500 hover:text-gray-700" aria-label="Fechar modal de cartão">
+                <h2 id="add-card-title" class="text-2xl font-bold text-gray-800">Add Card</h2>
+                <button onclick="closeAddCardModal()" class="text-gray-500 hover:text-gray-700" aria-label="Close card modal">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
             
             <form onsubmit="handleAddCard(event)">
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Número do Cartão</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Card Number</label>
                     <input 
                         type="text" 
                         id="card-number"
@@ -544,19 +544,19 @@
                 </div>
                 
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Nome no Cartão</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Name on Card</label>
                     <input 
                         type="text" 
                         id="card-holder"
                         class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
-                        placeholder="JOÃO SILVA"
+                        placeholder="JOHN DOE"
                         required
                     >
                 </div>
                 
                 <div class="grid grid-cols-3 gap-4 mb-4">
                     <div class="col-span-1">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Mês</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Month</label>
                         <input 
                             type="number" 
                             id="card-month"
@@ -568,7 +568,7 @@
                         >
                     </div>
                     <div class="col-span-1">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Ano</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Year</label>
                         <input 
                             type="number" 
                             id="card-year"
@@ -593,7 +593,7 @@
                 </div>
                 
                 <div class="mb-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Tipo de Cartão</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Card Type</label>
                     <select 
                         id="card-type"
                         class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:outline-none"
@@ -609,7 +609,7 @@
                     type="submit"
                     class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold transition"
                 >
-                    Adicionar Cartão
+                    Add Card
                 </button>
             </form>
         </div>
@@ -619,8 +619,8 @@
     <div id="risk-explain-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="risk-explain-title">
         <div class="modal-content">
             <div class="flex justify-between items-center mb-4">
-                <h2 id="risk-explain-title" class="text-2xl font-bold text-gray-800">Explicabilidade de Risco</h2>
-                <button onclick="closeRiskExplainModal()" class="text-gray-500 hover:text-gray-700" aria-label="Fechar modal de risco">
+                <h2 id="risk-explain-title" class="text-2xl font-bold text-gray-800">Risk Explainability</h2>
+                <button onclick="closeRiskExplainModal()" class="text-gray-500 hover:text-gray-700" aria-label="Close risk modal">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
@@ -634,10 +634,10 @@
             <div class="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-6 rounded-t-2xl">
                 <h2 id="liveness-title" class="text-2xl font-bold flex items-center">
                     <i class="fas fa-shield-halved mr-3"></i>
-                    Verificação de Liveness
+                    Liveness Verification
                 </h2>
                 <p class="text-purple-100 text-sm mt-1">
-                    Siga as instruções para comprovar que é humano
+                    Follow the instructions to prove you are human
                 </p>
             </div>
 
@@ -646,8 +646,8 @@
                     <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
                     <div class="absolute bottom-3 left-3 right-3 pointer-events-none">
                         <div class="bg-black/65 backdrop-blur-sm text-white px-4 py-3 rounded-xl text-center">
-                            <p class="text-lg font-bold mb-1" id="challenge-instruction">Posicione o rosto</p>
-                            <p class="text-sm text-gray-300" id="challenge-status">Aguarde...</p>
+                            <p class="text-lg font-bold mb-1" id="challenge-instruction">Position your face</p>
+                            <p class="text-sm text-gray-300" id="challenge-status">Please wait...</p>
                         </div>
                     </div>
                 </div>
@@ -659,13 +659,13 @@
                 <div class="bg-purple-50 border-2 border-purple-200 rounded-xl p-4 mb-4">
                     <p class="text-sm text-purple-900">
                         <i class="fas fa-info-circle mr-2"></i>
-                        <strong>Dica:</strong> permita acesso à câmara, mantenha boa iluminação e rosto centrado.
+                        <strong>Tip:</strong> allow camera access, keep good lighting, and keep your face centered.
                     </p>
                 </div>
 
                 <button onclick="cancelLiveness()" class="w-full bg-red-600 text-white font-semibold py-3 rounded-xl hover:bg-red-700 transition-all">
                     <i class="fas fa-times mr-2"></i>
-                    Cancelar Verificação
+                    Cancel Verification
                 </button>
             </div>
         </div>
@@ -678,3 +678,6 @@
     <script src="/static/js/dashboard.js?v=2"></script>
 </body>
 </html>
+
+
+

@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Histórico - BioTrust</title>
+    <title>History - BioTrust</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -284,10 +284,10 @@
                     <i class="fas fa-home mr-1"></i> Dashboard
                 </a>
                 <a href="/static/cards.html" class="navbar-link">
-                    <i class="fas fa-credit-card mr-1"></i> Cartões
+                    <i class="fas fa-credit-card mr-1"></i> Cards
                 </a>
                 <a href="/static/transaction-history.html" class="navbar-link active">
-                    <i class="fas fa-history mr-1"></i> Histórico
+                    <i class="fas fa-history mr-1"></i> History
                 </a>
                 
                 <div class="user-menu">
@@ -299,10 +299,10 @@
                     
                     <div class="user-dropdown" id="user-dropdown">
                         <a href="/static/profile.html">
-                            <i class="fas fa-user mr-2"></i> Meu Perfil
+                            <i class="fas fa-user mr-2"></i> My Profile
                         </a>
                         <a href="#" onclick="logout()" class="logout">
-                            <i class="fas fa-sign-out-alt mr-2"></i> Sair
+                            <i class="fas fa-sign-out-alt mr-2"></i> Sign Out
                         </a>
                     </div>
                 </div>
@@ -313,10 +313,10 @@
     <!-- Filters -->
     <div class="filters-container">
         <div class="flex gap-2 overflow-x-auto" style="scrollbar-width: none; -ms-overflow-style: none; max-width: 1200px; margin: 0 auto;">
-            <button class="filter-btn active" onclick="filterTransactions('all', this)">Todas</button>
-            <button class="filter-btn" onclick="filterTransactions('approved', this)">Aprovadas</button>
-            <button class="filter-btn" onclick="filterTransactions('pending', this)">Pendentes</button>
-            <button class="filter-btn" onclick="filterTransactions('rejected', this)">Rejeitadas</button>
+            <button class="filter-btn active" onclick="filterTransactions('all', this)">All</button>
+            <button class="filter-btn" onclick="filterTransactions('approved', this)">Approved</button>
+            <button class="filter-btn" onclick="filterTransactions('pending', this)">Pending</button>
+            <button class="filter-btn" onclick="filterTransactions('rejected', this)">Rejected</button>
         </div>
     </div>
     
@@ -331,11 +331,11 @@
                 </div>
                 <div>
                     <div class="text-2xl font-bold text-green-600" id="approved-count">0</div>
-                    <div class="text-xs text-gray-500">Aprovadas</div>
+                    <div class="text-xs text-gray-500">Approved</div>
                 </div>
                 <div>
                     <div class="text-2xl font-bold text-red-600" id="rejected-count">0</div>
-                    <div class="text-xs text-gray-500">Rejeitadas</div>
+                    <div class="text-xs text-gray-500">Rejected</div>
                 </div>
             </div>
         </div>
@@ -350,8 +350,8 @@
             <svg style="width: 80px; height: 80px; margin: 0 auto 20px; color: #d1d5db;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
             </svg>
-            <h3 class="text-xl font-bold text-gray-700 mb-2">Sem transações</h3>
-            <p class="text-gray-500">As suas transações aparecerão aqui</p>
+            <h3 class="text-xl font-bold text-gray-700 mb-2">No transactions</h3>
+            <p class="text-gray-500">Your transactions will appear here</p>
         </div>
         
         <!-- Loading -->
@@ -451,10 +451,10 @@
                     'blocked': 'text-red-600'
                 };
                 const statusLabels = {
-                    'approved': 'Aprovada',
-                    'pending': 'Pendente',
-                    'rejected': 'Rejeitada',
-                    'blocked': 'Bloqueada'
+                    'approved': 'Approved',
+                    'pending': 'Pending',
+                    'rejected': 'Rejected',
+                    'blocked': 'Blocked'
                 };
                 
                 const date = new Date(tx.timestamp || tx.created_at);
@@ -479,10 +479,10 @@
                                 </div>
                                 <div>
                                     <div class="font-semibold text-gray-800">
-                                        ${tx.merchant_name || tx.recipient_email || 'Transação'}
+                                        ${tx.merchant_name || tx.recipient_email || 'Transaction'}
                                     </div>
                                     <div class="text-sm text-gray-500">
-                                        ${date.toLocaleString('pt-PT', { 
+                                        ${date.toLocaleString('en-GB', {
                                             day: '2-digit', 
                                             month: 'short', 
                                             year: 'numeric',
@@ -511,7 +511,7 @@
                                 justify-content: space-between;
                                 align-items: center;
                             ">
-                                <span class="text-sm text-gray-600">Risco</span>
+                                <span class="text-sm text-gray-600">Risk</span>
                                 <div class="flex items-center gap-2">
                                     <div style="
                                         width: 100px;
@@ -535,7 +535,7 @@
                         ${tx.liveness_verified ? `
                             <div class="mt-2 text-sm text-green-600 flex items-center gap-2">
                                 <i class="fas fa-check-circle"></i>
-                                <span>Verificação biométrica completa</span>
+                                <span>Biometric verification complete</span>
                             </div>
                         ` : ''}
                     </div>
@@ -580,3 +580,6 @@
     </script>
 </body>
 </html>
+
+
+

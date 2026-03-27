@@ -1,190 +1,152 @@
 /* ==============================================
-   BioTrust - Webcam & Liveness Handler
+   BioTrust - Webcam & Liveness Handler v2.2
    ==============================================
-   
-   Este módulo gere a captura de vídeo da webcam e
-   a comunicação com o backend para verificação de liveness.
-   
-   FLUXO:
-   1. Solicitar permissão da câmara (getUserMedia)
-   2. Exibir stream de vídeo no elemento <video>
-   3. Capturar frames periodicamente
-   4. Enviar frames para o backend via WebSocket ou HTTP
-   5. Receber instruções (desafios) e feedback
-   6. Mostrar resultado final
-   
-   TECNOLOGIAS:
-   - MediaDevices API (getUserMedia)
-   - Canvas API (para capturar frames)
-   - WebSocket (opcional - real-time)
-   - HTTP POST (alternativa mais simples)
-   
+
+   Fixes in v2.2:
+   - FPS raised from 8 to 12 (more reliable blink detection over cloud latency)
+   - Explicit queue guard: skip frame if previous request still in-flight
+     (prevents frame pile-up at 12fps when server is slow)
+   - Comment update only; all other logic from v2.1 unchanged
+
+   Fixes in v2.1:
+   - FPS raised from 4 to 8 (blink detection needs faster sampling)
+   - Uses result.current_challenge.instruction for UI (not .name)
+   - CSS scaleX(-1) handles mirror — backend receives raw frame
+   - Robust null checks on UI elements
+
+   FLOW:
+   1. getUserMedia → video element
+   2. Start liveness session (POST /api/liveness-stream/start)
+   3. Capture frames at 12fps → POST /api/liveness-stream/frame/:id
+   4. Update UI with challenge instruction + progress
+   5. On complete/failed → POST /api/liveness-stream/complete/:id
    ============================================== */
 
-// Estado global da webcam
 let webcamStream = null;
 let webcamVideo = null;
 let isCapturing = false;
 let captureInterval = null;
 let currentTransactionId = null;
-let challengesCompleted = 0;
-let totalChallenges = 0;
 
 /* ==============================================
-   INICIALIZAÇÃO DA WEBCAM
+   WEBCAM INIT / STOP
    ============================================== */
 
-/**
- * Solicita permissão e inicia a webcam
- * @returns {Promise<MediaStream>} - Stream de vídeo
- */
 async function initWebcam() {
     try {
-        console.log('📹 Solicitando acesso à webcam...');
-        
-        // Solicita permissão ao utilizador
-        // Constraints: preferências de vídeo
+        console.log('[Webcam] Requesting access...');
+
         const constraints = {
             video: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                facingMode: 'user', // Câmara frontal
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+                facingMode: 'user',
                 frameRate: { ideal: 30 }
             },
-            audio: false // Não precisamos de áudio
+            audio: false
         };
-        
+
         webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-        // Conecta o stream ao elemento <video>
+
         webcamVideo = document.getElementById('webcam');
+        if (!webcamVideo) {
+            throw new Error('Element #webcam not found in DOM');
+        }
+
         webcamVideo.srcObject = webcamStream;
-        // Mirror mode: natural front-camera behavior like a mirror.
+
+        // Mirror display only — backend receives raw (un-flipped) frames.
+        // The detector does NOT flip internally for the web flow.
         webcamVideo.style.transform = 'scaleX(-1)';
         webcamVideo.style.webkitTransform = 'scaleX(-1)';
-        
-        console.log('✅ Webcam iniciada com sucesso');
+
+        // Wait until video is actually playing before we start capturing
+        await new Promise((resolve, reject) => {
+            webcamVideo.onloadedmetadata = () => {
+                webcamVideo.play().then(resolve).catch(reject);
+            };
+            webcamVideo.onerror = reject;
+        });
+
+        console.log('[Webcam] Started successfully');
         return webcamStream;
-        
+
     } catch (error) {
-        console.error('❌ Erro ao aceder à webcam:', error);
-        
-        // Mensagens de erro amigáveis
-        let errorMessage = 'Não foi possível aceder à câmara.';
-        
+        console.error('[Webcam] Error:', error);
+
+        let errorMessage = 'Unable to access the camera.';
         if (error.name === 'NotAllowedError') {
-            errorMessage = 'Permissão negada. Por favor, autorize o acesso à câmara.';
+            errorMessage = 'Permission denied. Please allow camera access in browser settings.';
         } else if (error.name === 'NotFoundError') {
-            errorMessage = 'Nenhuma câmara encontrada no dispositivo.';
+            errorMessage = 'No camera found on this device.';
         } else if (error.name === 'NotReadableError') {
-            errorMessage = 'A câmara está a ser usada por outra aplicação.';
+            errorMessage = 'The camera is in use by another application. Close it and try again.';
+        } else if (error.message.includes('#webcam')) {
+            errorMessage = 'Internal error: video element not found. Refresh the page.';
         }
-        
-        showError(errorMessage);
+
+        if (typeof showError === 'function') showError(errorMessage);
         throw error;
     }
 }
 
-/**
- * Para a webcam e liberta recursos
- */
 function stopWebcam() {
-    if (webcamStream) {
-        console.log('🛑 Parando webcam...');
-        
-        // Para todas as tracks (vídeo/áudio)
-        webcamStream.getTracks().forEach(track => track.stop());
-        
-        // Limpa o elemento de vídeo
-        if (webcamVideo) {
-            webcamVideo.srcObject = null;
-        }
-        
-        webcamStream = null;
-        isCapturing = false;
-        
-        // Limpa o intervalo de captura
-        if (captureInterval) {
-            clearInterval(captureInterval);
-            captureInterval = null;
-        }
-        
-        console.log('✅ Webcam parada');
+    if (captureInterval) {
+        clearInterval(captureInterval);
+        captureInterval = null;
     }
+
+    isCapturing = false;
+
+    if (webcamStream) {
+        webcamStream.getTracks().forEach(track => track.stop());
+        webcamStream = null;
+    }
+
+    if (webcamVideo) {
+        webcamVideo.srcObject = null;
+        webcamVideo = null;
+    }
+
+    console.log('[Webcam] Stopped');
 }
 
 /* ==============================================
-   CAPTURA DE FRAMES
+   FRAME CAPTURE
    ============================================== */
 
-/**
- * Captura um frame do vídeo como imagem Base64
- * @returns {string} - Imagem em formato Base64
- */
 function captureFrame() {
-    if (!webcamVideo) {
-        console.warn('⚠️ Vídeo não inicializado');
+    if (!webcamVideo || !webcamVideo.videoWidth || !webcamVideo.videoHeight) {
         return null;
     }
 
-    if (!webcamVideo.videoWidth || !webcamVideo.videoHeight) {
-        return null;
-    }
-    
-    // Cria um canvas temporário para capturar o frame
     const canvas = document.createElement('canvas');
     canvas.width = webcamVideo.videoWidth;
     canvas.height = webcamVideo.videoHeight;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
-    
-    // Converte para Base64 (JPEG com 80% de qualidade)
-    const frameBase64 = canvas.toDataURL('image/jpeg', 0.8);
-    
-    return frameBase64;
-}
 
-/**
- * Envia um frame para o backend para análise
- * @param {string} frameBase64 - Imagem em Base64
- * @returns {Promise<object>} - Resposta do backend
- */
-async function sendFrameToBackend(frameBase64) {
-    // NOTA: O backend atual não tem endpoint para processar frames em tempo real
-    // Vamos simular por enquanto e depois implementar
-    
-    // TODO: Implementar endpoint /api/liveness/analyze-frame
-    // Por agora, vamos usar a simulação
-    
-    console.log('📤 Frame capturado (simulado)');
-    return { success: true };
+    const ctx = canvas.getContext('2d');
+
+    // Draw WITHOUT flipping — the CSS mirror is for display only.
+    // The backend (MediaPipe) expects the raw orientation.
+    ctx.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
+
+    // JPEG at 75% — good balance between quality and payload size at 12fps
+    return canvas.toDataURL('image/jpeg', 0.75);
 }
 
 /* ==============================================
    LIVENESS VERIFICATION FLOW
    ============================================== */
 
-/**
- * Inicia o processo de verificação de liveness
- * @param {string} transactionId - ID da transação a verificar
- */
-/**
- * Inicia verificação de liveness
- * Agora usa LivenessDetectorV3 real via API
- */
 async function startLivenessVerification(transactionId) {
     currentTransactionId = transactionId;
-    challengesCompleted = 0;
-    
+
     try {
-        console.log('🔍 Iniciando verificação de liveness com detector V3...');
+        console.log('[Liveness] Starting session for transaction:', transactionId);
         showLivenessModal();
-        
-        // 1. Iniciar webcam primeiro
+
         await initWebcam();
-        
-        // 2. Iniciar sessão de liveness no backend
+
         const response = await fetch('/api/liveness-stream/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -193,245 +155,223 @@ async function startLivenessVerification(transactionId) {
                 risk_level: 'medium'
             })
         });
-        
+
         if (!response.ok) {
-            throw new Error('Falha ao iniciar sessão de liveness');
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `Error ${response.status} starting session`);
         }
-        
+
         const data = await response.json();
         const sessionId = data.session_id;
-        
-        console.log('✅ Sessão iniciada:', sessionId);
-        console.log('📋 Desafios:', data.total_challenges);
-        console.log('🎯 Primeiro desafio:', data.current_challenge.name);
-        
-        // 3. Iniciar loop de captura e processamento
+
+        console.log('[Liveness] Session started:', sessionId);
+        console.log('[Liveness] Challenges:', data.total_challenges);
+
+        // Show first challenge immediately
+        updateChallengeUI(
+            data.current_challenge.instruction || data.current_challenge.name,
+            'Keep your face centered in the camera...'
+        );
+        updateProgress(0);
+
         startFrameStream(sessionId);
-        
+
     } catch (error) {
-        console.error('❌ Erro ao iniciar liveness:', error);
-        alert('Erro ao iniciar verificação biométrica: ' + error.message);
+        console.error('[Liveness] Startup error:', error);
+        if (typeof showError === 'function') {
+            showError('Error starting biometric verification: ' + error.message);
+        } else {
+            alert('Error starting biometric verification: ' + error.message);
+        }
         stopWebcam();
         hideLivenessModal();
     }
 }
 
-/**
- * Inicia stream de frames para o backend (REAL LIVENESS DETECTOR V3)
- * @param {string} sessionId - ID da sessão de liveness
- */
 function startFrameStream(sessionId) {
     isCapturing = true;
     let framesSent = 0;
-    const FPS = 4; // Lower frame rate to reduce mobile/network pressure
+
+    // 12 FPS — reliable for blink detection even with cloud round-trip latency.
+    // A blink (~150ms) = ~1.8 frames at this rate, giving enough coverage.
+    const FPS = 12;
     const INTERVAL_MS = 1000 / FPS;
-    
-    console.log(`🎥 Iniciando stream de frames (${FPS} fps)`);
-    
+
+    // In-flight guard: skip tick if previous request hasn't returned yet.
+    // Prevents frame pile-up when the Render server is under load.
+    let requestInFlight = false;
+
+    console.log(`[Liveness] Frame stream starting at ${FPS}fps`);
+
     captureInterval = setInterval(async () => {
-        if (!isCapturing || !webcamVideo) {
-            console.log('⏸️ Stream pausado ou webcam não disponível');
+        if (!isCapturing) {
             clearInterval(captureInterval);
             return;
         }
-        
+
+        // Skip this tick if the last request is still pending
+        if (requestInFlight) {
+            return;
+        }
+
+        const frameBase64 = captureFrame();
+        if (!frameBase64) {
+            // Video not ready yet — skip silently
+            return;
+        }
+
+        requestInFlight = true;
+
         try {
-            // Capturar frame atual
-            const frameBase64 = captureFrame();
-            
-            if (!frameBase64) {
-                console.warn('⚠️ Frame vazio, pulando...');
-                return;
-            }
-            
-            // Enviar frame para backend
             const response = await fetch(`/api/liveness-stream/frame/${sessionId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ frame_base64: frameBase64 })
             });
-            
+
             if (!response.ok) {
                 if (response.status === 429) {
-                    console.error('❌ Rate limit atingido durante liveness stream');
-                    clearInterval(captureInterval);
-                    isCapturing = false;
-                    showError('Muitos pedidos em simultâneo. Aguarde alguns segundos e tente novamente.');
-                    stopWebcam();
-                    hideLivenessModal();
+                    console.warn('[Liveness] Rate limit hit — pausing 2s');
+                    await new Promise(r => setTimeout(r, 2000));
                     return;
                 }
-
                 if (response.status === 404) {
-                    console.error('❌ Sessão de liveness expirada/não encontrada');
+                    console.error('[Liveness] Session expired');
                     clearInterval(captureInterval);
                     isCapturing = false;
-                    showError('Sessão de verificação expirada. Inicie novamente a transação.');
+                    if (typeof showError === 'function') {
+                        showError('Session expired. Start the transaction again.');
+                    }
                     stopWebcam();
                     hideLivenessModal();
                     return;
                 }
-
                 if (response.status === 400) {
-                    // Transient frame decode issue; skip this frame only.
+                    // Bad frame decode — skip this frame only
                     return;
                 }
-
-                console.error('❌ Erro ao processar frame:', response.statusText);
+                console.warn('[Liveness] Unexpected status:', response.status);
                 return;
             }
-            
+
             const result = await response.json();
             framesSent++;
-            
-            // Atualizar UI com feedback do backend
-            updateChallengeUI(result.current_challenge.instruction, result.feedback);
+
+            // Update UI — prefer instruction over name for clearer UX
+            const instruction = result.current_challenge?.instruction
+                || result.current_challenge?.name
+                || '';
+            updateChallengeUI(instruction, result.feedback);
             updateProgress(result.progress);
-            
-            console.log(`📊 Frame ${framesSent}: ${result.progress.toFixed(1)}% - ${result.feedback}`);
-            
-            // Verificar se completou
+
+            if (framesSent % 16 === 0) {
+                console.log(`[Liveness] Frame ${framesSent} | ${result.progress.toFixed(1)}% | ${result.feedback}`);
+            }
+
             if (result.status === 'completed') {
-                console.log('✅ Verificação COMPLETA!');
+                console.log('[Liveness] COMPLETED');
                 clearInterval(captureInterval);
+                isCapturing = false;
                 await completeLivenessVerification(sessionId, true);
-            } else if (result.status === 'failed' || result.status === 'timeout') {
-                console.log('❌ Verificação FALHOU:', result.status);
+            } else if (result.status === 'failed') {
+                console.log('[Liveness] FAILED:', result.feedback);
                 clearInterval(captureInterval);
+                isCapturing = false;
                 await completeLivenessVerification(sessionId, false);
             }
-            
+
         } catch (error) {
-            console.error('❌ Erro ao enviar frame:', error);
-            // Não para o stream por erros individuais, continua tentando
+            // Network errors are transient — log but keep streaming
+            console.warn('[Liveness] Frame send error (will retry):', error.message);
+        } finally {
+            requestInFlight = false;
         }
-        
+
     }, INTERVAL_MS);
 }
 
-/**
- * Completa a verificação de liveness (COM API REAL)
- * @param {string} sessionId - ID da sessão
- * @param {boolean} success - Se passou ou não
- */
 async function completeLivenessVerification(sessionId, success) {
-    console.log(`🎯 Finalizando verificação... ${success ? 'SUCESSO' : 'FALHA'}`);
-    
-    isCapturing = false;
-    
+    console.log(`[Liveness] Completing session — success: ${success}`);
+
     try {
-        // Chamar endpoint de finalização
         const response = await fetch(`/api/liveness-stream/complete/${sessionId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
-        
+
         if (!response.ok) {
-            let errorDetail = `HTTP ${response.status}`;
+            let detail = `HTTP ${response.status}`;
             try {
                 const err = await response.json();
-                errorDetail = err.detail || errorDetail;
-            } catch (_) {
-                // Ignore parse errors and keep fallback detail.
-            }
-            throw new Error(`Falha ao finalizar verificação: ${errorDetail}`);
+                detail = err.detail || detail;
+            } catch (_) {}
+            throw new Error(`Failed to complete verification: ${detail}`);
         }
-        
+
         const result = await response.json();
-        
-        console.log('✅ Resultado final:', result);
-        
-        // Parar webcam
+        console.log('[Liveness] Final result:', result);
+
         stopWebcam();
-        
-        // Fechar modal
         hideLivenessModal();
-        
-        // Callback opcional para páginas que integram este módulo
+
         if (typeof window.onLivenessCompleted === 'function') {
             window.onLivenessCompleted(result);
         } else if (result.transaction) {
             if (typeof window.showTransactionResult === 'function') {
-                window.showTransactionResult(result.transaction, true);
+                window.showTransactionResult(result.transaction, success);
             } else {
-                alert(success ? '✅ Verificação aprovada!' : '❌ Verificação falhou.');
+                alert(success ? '✅ Verification approved!' : '❌ Verification failed.');
             }
         }
-        
+
     } catch (error) {
-        console.error('❌ Erro ao completar liveness:', error);
-        alert('Erro ao finalizar verificação: ' + error.message);
+        console.error('[Liveness] Complete error:', error);
+        if (typeof showError === 'function') {
+            showError('Error completing verification: ' + error.message);
+        } else {
+            alert('Error completing verification: ' + error.message);
+        }
         stopWebcam();
         hideLivenessModal();
     }
 }
 
-/**
- * Cancela a verificação de liveness
- */
 function cancelLiveness() {
-    console.log('❌ Verificação cancelada pelo utilizador');
-    
+    console.log('[Liveness] Cancelled by user');
+    isCapturing = false;
     stopWebcam();
     hideLivenessModal();
-    
-    // Volta para o resultado da transação
-    showInfo('Verificação cancelada. A transação ficará pendente até completar a verificação.');
+    if (typeof showInfo === 'function') {
+        showInfo('Verification canceled. The transaction will remain pending.');
+    }
 }
 
 /* ==============================================
    UI HELPERS
    ============================================== */
 
-/**
- * Mostra o modal de liveness
- */
 function showLivenessModal() {
     const modal = document.getElementById('liveness-modal');
-    modal.classList.remove('hidden');
+    if (modal) modal.classList.remove('hidden');
 }
 
-/**
- * Esconde o modal de liveness
- */
 function hideLivenessModal() {
     const modal = document.getElementById('liveness-modal');
-    modal.classList.add('hidden');
+    if (modal) modal.classList.add('hidden');
 }
 
-/**
- * Atualiza a UI com o desafio atual
- * @param {string} instruction - Instrução do desafio
- * @param {string} status - Status atual
- */
-function updateChallengeUI(instruction, status) {
+function updateChallengeUI(instruction, feedback) {
     const instructionEl = document.getElementById('challenge-instruction');
     const statusEl = document.getElementById('challenge-status');
-    
-    if (instructionEl) instructionEl.textContent = instruction;
-    if (statusEl) statusEl.textContent = status;
+    if (instructionEl && instruction) instructionEl.textContent = instruction;
+    if (statusEl && feedback) statusEl.textContent = feedback;
 }
 
-/**
- * Atualiza a barra de progresso
- * @param {number} progress - Progresso em % (0-100)
- */
 function updateProgress(progress) {
     const progressBar = document.getElementById('liveness-progress');
     if (progressBar) {
-        progressBar.style.width = `${progress}%`;
+        progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
     }
 }
 
-/* ==============================================
-   EXPORT & INITIALIZATION
-   ============================================== */
-
-console.log('✅ Webcam Module Loaded');
-console.log('📹 Available functions:', [
-    'initWebcam()',
-    'stopWebcam()',
-    'captureFrame()',
-    'startLivenessVerification(transactionId)',
-    'cancelLiveness()'
-]);
+console.log('[BioTrust] Webcam module v2.2 loaded');

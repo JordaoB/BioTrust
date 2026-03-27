@@ -1,9 +1,4 @@
-/**
- * BioTrust Dashboard - Lógica Principal
- * v1.0 - MBWay Style Interface
- */
-
-// API_BASE is defined in token-manager.js (loaded first)
+﻿// API_BASE is defined in token-manager.js (loaded first)
 let currentUser = null;
 let accessToken = null;
 let contacts = [];
@@ -22,7 +17,7 @@ const LOCATIONS = {
 function getBrowserPosition() {
     return new Promise((resolve, reject) => {
         if (!navigator.geolocation) {
-            reject(new Error('Geolocalização não suportada no browser'));
+            reject(new Error('Geolocation is not supported by this browser'));
             return;
         }
 
@@ -193,9 +188,9 @@ async function loadCards() {
         console.error('Error loading cards:', error);
         document.getElementById('cards-container').innerHTML = `
             <div class="text-center text-gray-500" style="min-width: 320px">
-                <p>Nenhum cartão adicionado</p>
+                <p>No card added</p>
                 <button onclick="openAddCardModal()" class="mt-4 text-green-600 font-semibold">
-                    <i class="fas fa-plus mr-2"></i>Adicionar Cartão
+                    <i class="fas fa-plus mr-2"></i>Add Card
                 </button>
             </div>
         `;
@@ -209,9 +204,9 @@ function displayCards(cards) {
     if (!cards || cards.length === 0) {
         container.innerHTML = `
             <div class="text-center text-gray-500" style="min-width: 320px">
-                <p>Nenhum cartão adicionado</p>
+                <p>No card added</p>
                 <button onclick="openAddCardModal()" class="mt-4 text-green-600 font-semibold">
-                    <i class="fas fa-plus mr-2"></i>Adicionar Cartão
+                    <i class="fas fa-plus mr-2"></i>Add Card
                 </button>
             </div>
         `;
@@ -224,11 +219,11 @@ function displayCards(cards) {
                 <div class="text-sm opacity-90">
                     ${card.card_type === 'visa' ? 'VISA' : card.card_type === 'mastercard' ? 'MASTERCARD' : 'AMEX'}
                 </div>
-                ${card.is_default ? '<div class="bg-white bg-opacity-20 px-3 py-1 rounded-full text-xs">Principal</div>' : ''}
+                ${card.is_default ? '<div class="bg-white bg-opacity-20 px-3 py-1 rounded-full text-xs">Primary</div>' : ''}
             </div>
             
             <div class="mb-2">
-                <div class="text-xs opacity-75 mb-1">Saldo Disponível</div>
+                <div class="text-xs opacity-75 mb-1">Available Balance</div>
                 <div class="text-2xl font-bold">€ ${(card.balance || 0).toFixed(2)}</div>
             </div>
             
@@ -240,17 +235,17 @@ function displayCards(cards) {
             
             <div class="flex justify-between items-end">
                 <div>
-                    <div class="text-xs opacity-75 mb-1">Titular</div>
+                    <div class="text-xs opacity-75 mb-1">Cardholder</div>
                     <div class="text-sm font-semibold">${card.card_holder}</div>
                 </div>
                 <div class="text-right">
-                    <div class="text-xs opacity-75 mb-1">Validade</div>
+                    <div class="text-xs opacity-75 mb-1">Expiry</div>
                     <div class="text-sm font-semibold">${card.expiry}</div>
                 </div>
             </div>
             
             <div class="mt-3 text-xs opacity-75">
-                Limite diário: €${(card.daily_limit || 0).toFixed(0)} | Gasto hoje: €${(card.daily_spent || 0).toFixed(2)}
+                Daily limit: €${(card.daily_limit || 0).toFixed(0)} | Spent today: €${(card.daily_spent || 0).toFixed(2)}
             </div>
             
             ${!card.is_default ? `
@@ -283,7 +278,7 @@ async function loadContacts() {
 // Update contacts dropdown
 function updateContactsDropdown() {
     const select = document.getElementById('recipient-select');
-    select.innerHTML = '<option value="">Selecione um contacto</option>' +
+    select.innerHTML = '<option value="">Select a contact</option>' +
         contacts.map(contact => `
             <option value="${contact.email}">
                 ${contact.name} (${contact.phone})
@@ -297,17 +292,17 @@ function updateCardsDropdown() {
     if (!select) return; // Element doesn't exist on all pages
     
     if (!userCards || userCards.length === 0) {
-        select.innerHTML = '<option value="">Nenhum cartão disponível</option>';
+        select.innerHTML = '<option value="">No cards available</option>';
         return;
     }
     
-    select.innerHTML = '<option value="">Selecione um cartão</option>' +
+    select.innerHTML = '<option value="">Select a card</option>' +
         userCards.map((card, index) => {
             const balance = card.balance || 0;
             const cardType = card.card_type === 'visa' ? 'VISA' : 
                            card.card_type === 'mastercard' ? 'Mastercard' : 'AMEX';
             const lastFour = card.last_four || card.masked_number?.slice(-4) || '****';
-            const defaultLabel = card.is_default ? ' (Principal)' : '';
+            const defaultLabel = card.is_default ? ' (Default)' : '';
             
             return `
                 <option value="${index}" data-balance="${balance}">
@@ -352,8 +347,8 @@ function displayTransactions(transactions) {
                 <svg style="width: 64px; height: 64px; margin: 0 auto 16px; color: #d1d5db;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
                 </svg>
-                <p class="text-lg font-semibold mb-2">Sem transações</p>
-                <p class="text-sm">As suas transações aparecerão aqui</p>
+                <p class="text-lg font-semibold mb-2">No transactions</p>
+                <p class="text-sm">Your transactions will appear here</p>
             </div>
         `;
         return;
@@ -401,7 +396,7 @@ function displayTransactions(transactions) {
                     </div>
                     <div style="flex: 1;">
                         <div style="font-weight: 600; color: #1f2937; margin-bottom: 2px;">
-                            ${tx.merchant_name || tx.recipient_email || 'Transação'}
+                            ${tx.merchant_name || tx.recipient_email || 'Transaction'}
                         </div>
                         <div style="font-size: 12px; color: #6b7280;">
                             ${new Date(tx.timestamp || tx.created_at).toLocaleDateString('pt-PT', { 
@@ -410,7 +405,7 @@ function displayTransactions(transactions) {
                                 hour: '2-digit', 
                                 minute: '2-digit' 
                             })}
-                            ${tx.risk_score ? `• Risco: ${tx.risk_score}` : ''}
+                            ${tx.risk_score ? `• Risk: ${tx.risk_score}` : ''}
                         </div>
                     </div>
                 </div>
@@ -427,7 +422,7 @@ function displayTransactions(transactions) {
                         ${statusIcons[tx.status] || ''} ${tx.status || 'pending'}
                     </div>
                     <button class="tx-explain-btn" data-index="${index}" style="margin-top: 6px; font-size: 12px; color: #0f766e; font-weight: 700; border: none; background: none; cursor: pointer;">
-                        Ver explicação
+                        View explanation
                     </button>
                 </div>
             </div>
@@ -451,36 +446,36 @@ function showRiskExplainModal(transaction) {
 
     const factors = transaction.risk_factors || {};
     const factorRows = [
-        { key: 'location', label: 'Localização' },
-        { key: 'amount', label: 'Montante' },
+        { key: 'location', label: 'Location' },
+        { key: 'amount', label: 'Amount' },
         { key: 'velocity', label: 'Velocity' },
-        { key: 'recipient', label: 'Destinatário' },
-        { key: 'time', label: 'Horário' }
+        { key: 'recipient', label: 'Recipient' },
+        { key: 'time', label: 'Time' }
     ];
 
     const blockedText = transaction.status === 'rejected' || transaction.status === 'blocked'
         ? 'BLOQUEADO'
         : transaction.status === 'pending'
-            ? 'EM ANÁLISE (LIVENESS)'
-            : 'APROVADO';
+            ? 'IN REVIEW (LIVENESS)'
+            : 'APPROVED';
 
     const anomalySummary = transaction.anomaly_detected
-        ? `Isolation Forest detetou ${Number(transaction.anomaly_score || 0).toFixed(1)}% de anomalia`
-        : 'Isolation Forest não detetou anomalias críticas';
+        ? `Isolation Forest detected ${Number(transaction.anomaly_score || 0).toFixed(1)}% anomaly`
+        : 'Isolation Forest found no critical anomalies';
 
-    const locationReason = (factors.location && factors.location.reason) || transaction.risk_reason || 'Sem detalhe de localização';
+    const locationReason = (factors.location && factors.location.reason) || transaction.risk_reason || 'No location detail';
     const reasonLine = `${blockedText}: ${anomalySummary}. ${locationReason}`;
 
     const bars = factorRows.map(row => {
         const item = factors[row.key] || {};
         const score = Number(item.score || 0).toFixed(1);
         const contribution = Number(item.contribution || 0).toFixed(1);
-        const detail = item.reason || 'Sem detalhe';
+        const detail = item.reason || 'No detail';
         return `
             <div class="mb-3">
                 <div class="flex justify-between text-sm mb-1">
                     <span class="font-semibold text-gray-700">${row.label}</span>
-                    <span class="text-gray-600">score ${score} • impacto ${contribution}</span>
+                    <span class="text-gray-600">score ${score} • impact ${contribution}</span>
                 </div>
                 <div class="w-full bg-gray-200 rounded-full h-2.5 mb-1">
                     <div class="bg-gradient-to-r from-emerald-500 to-red-500 h-2.5 rounded-full" style="width: ${Math.min(100, Math.max(0, Number(score)))}%"></div>
@@ -492,7 +487,7 @@ function showRiskExplainModal(transaction) {
 
     content.innerHTML = `
         <div class="mb-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
-            <div class="text-sm text-gray-500 mb-1">Resumo de decisão</div>
+            <div class="text-sm text-gray-500 mb-1">Decision summary</div>
             <div class="text-lg font-bold text-slate-800">${reasonLine}</div>
         </div>
 
@@ -500,18 +495,18 @@ function showRiskExplainModal(transaction) {
             <div class="p-3 rounded-xl bg-white border border-gray-200">
                 <div class="text-xs text-gray-500">Risk Score</div>
                 <div class="text-2xl font-extrabold text-gray-900">${Number(transaction.risk_score || 0).toFixed(1)}/100</div>
-                <div class="text-sm text-gray-600">Nível: ${String(transaction.risk_level || 'N/A').toUpperCase()}</div>
+                <div class="text-sm text-gray-600">Level: ${String(transaction.risk_level || 'N/A').toUpperCase()}</div>
             </div>
             <div class="p-3 rounded-xl bg-white border border-gray-200">
                 <canvas id="risk-factor-chart" height="120"></canvas>
             </div>
         </div>
 
-        <div class="mb-2 text-sm font-bold text-gray-700">Que fatores pesaram mais</div>
+        <div class="mb-2 text-sm font-bold text-gray-700">Top contributing factors</div>
         ${bars}
 
         <div class="mt-4 text-xs text-gray-500">
-            TX: ${transaction._id || transaction.transaction_id || 'N/A'} • ${new Date(transaction.created_at || Date.now()).toLocaleString('pt-PT')}
+            TX: ${transaction._id || transaction.transaction_id || 'N/A'} • ${new Date(transaction.created_at || Date.now()).toLocaleString('en-GB')}
         </div>
     `;
 
@@ -563,13 +558,13 @@ async function handleSendMoney(event) {
     
     const recipient = contacts.find(c => c.email === recipientEmail);
     if (!recipient) {
-        showError('Contacto inválido');
+        showError('Invalid contact');
         return;
     }
     
     // Validate card selection
     if (isNaN(cardIndex) || !userCards[cardIndex]) {
-        showError('Por favor selecione um cartão');
+        showError('Please select a card');
         return;
     }
     
@@ -577,7 +572,7 @@ async function handleSendMoney(event) {
     
     // Validate card balance
     if (selectedCard.balance < amount) {
-        showError(`Saldo insuficiente. Disponível: €${selectedCard.balance.toFixed(2)}`);
+        showError(`Insufficient balance. Available: €${selectedCard.balance.toFixed(2)}`);
         return;
     }
     
@@ -588,12 +583,12 @@ async function handleSendMoney(event) {
         } catch (error) {
             console.warn('Realtime location unavailable, falling back to home location', error);
             location = LOCATIONS.home;
-            showError('Não foi possível obter GPS real. A usar localização de fallback (Casa).');
+            showError('Could not get real GPS location. Falling back to Home location.');
         }
     }
     
     // Create transaction
-    showLoading('Criando transação...');
+    showLoading('Creating transaction...');
     
     try {
         const response = await fetch(`${API_BASE}/api/transactions/`, {
@@ -614,7 +609,7 @@ async function handleSendMoney(event) {
         const transaction = await response.json();
         
         if (!response.ok) {
-            throw new Error(transaction.detail || 'Erro ao criar transação');
+            throw new Error(transaction.detail || 'Error creating transaction');
         }
         
         console.log('Transaction created:', transaction);
@@ -628,7 +623,7 @@ async function handleSendMoney(event) {
         } else {
             // Transaction approved automatically
             closeSendMoneyModal();
-            showSuccess(`Transação de €${amount.toFixed(2)} enviada para ${recipient.name}!`);
+            showSuccess(`Transaction of €${amount.toFixed(2)} sent to ${recipient.name}!`);
             await loadUserData();
             await loadCards();  // Reload cards to update balances
             await loadTransactions();
@@ -646,7 +641,7 @@ async function handleSendMoney(event) {
 // Show liveness verification
 function showLivenessVerification(transaction) {
     if (typeof startLivenessVerification !== 'function') {
-        showError('Módulo de webcam não carregado. Atualize a página e tente novamente.');
+        showError('Webcam module not loaded. Refresh the page and try again.');
         return;
     }
 
@@ -655,16 +650,16 @@ function showLivenessVerification(transaction) {
             showSuccess(`
                 <div class="text-center">
                     <div class="text-6xl mb-4">✅</div>
-                    <h3 class="text-2xl font-bold mb-2">Verificação Completa!</h3>
-                    <p class="text-gray-600">Transação aprovada com sucesso</p>
+                    <h3 class="text-2xl font-bold mb-2">Verification Complete!</h3>
+                    <p class="text-gray-600">Transaction approved successfully</p>
                 </div>
             `);
         } else {
             showError(`
                 <div class="text-center">
                     <div class="text-6xl mb-4">❌</div>
-                    <h3 class="text-2xl font-bold mb-2">Verificação Falhou</h3>
-                    <p class="text-gray-600">${result.message || 'Não foi possível validar a liveness.'}</p>
+                    <h3 class="text-2xl font-bold mb-2">Verification Failed</h3>
+                    <p class="text-gray-600">${result.message || 'Could not validate liveness.'}</p>
                 </div>
             `);
 
@@ -692,7 +687,7 @@ async function handleAddCard(event) {
     const cardCvv = document.getElementById('card-cvv').value;
     const cardType = document.getElementById('card-type').value;
     
-    showLoading('Adicionando cartão...');
+    showLoading('Adding card...');
     
     try {
         const response = await fetch(`${API_BASE}/api/users/${currentUser._id}/cards`, {
@@ -716,13 +711,13 @@ async function handleAddCard(event) {
         if (response.ok && data.success) {
             hideLoading();
             closeAddCardModal();
-            showSuccess('Cartão adicionado com sucesso!');
+            showSuccess('Card added successfully!');
             await loadCards();
             
             // Clear form
             event.target.reset();
         } else {
-            throw new Error(data.detail || 'Erro ao adicionar cartão');
+            throw new Error(data.detail || 'Error adding card');
         }
     } catch (error) {
         hideLoading();
@@ -733,11 +728,11 @@ async function handleAddCard(event) {
 
 // Delete card
 async function deleteCard(cardIndex) {
-    if (!confirm('Tem certeza que deseja remover este cartão?')) {
+    if (!confirm('Are you sure you want to remove this card?')) {
         return;
     }
     
-    showLoading('Removendo cartão...');
+    showLoading('Removing card...');
     
     try {
         const response = await fetch(`${API_BASE}/api/users/${currentUser._id}/cards/${cardIndex}`, {
@@ -748,10 +743,10 @@ async function deleteCard(cardIndex) {
         
         if (response.ok && data.success) {
             hideLoading();
-            showSuccess('Cartão removido com sucesso!');
+            showSuccess('Card removed successfully!');
             await loadCards();
         } else {
-            throw new Error(data.detail || 'Erro ao remover cartão');
+            throw new Error(data.detail || 'Error removing card');
         }
     } catch (error) {
         hideLoading();
@@ -850,7 +845,7 @@ function showNotification(message, type = 'info') {
     }, 5000);
 }
 
-function showLoading(message = 'Carregando...') {
+function showLoading(message = 'Loading...') {
     const modal = document.createElement('div');
     modal.id = 'loading-modal';
     modal.className = 'modal show';
@@ -899,7 +894,7 @@ if (!document.getElementById('notification-styles')) {
 }
 
 function showComingSoon() {
-    showSuccess('Funcionalidade em desenvolvimento! 🚀');
+    showSuccess('Funcionalidade em desenvolvimento! ðŸš€');
 }
 
 // Auto-format card number input
@@ -913,3 +908,5 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+

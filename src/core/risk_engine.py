@@ -138,17 +138,17 @@ class RiskEngine:
             risk_level = "low"
             decision = "approve"
             liveness_required = False
-            reason = "Baixo risco - Aprovação automática"
+            reason = "Low risk - Automatic approval"
         elif risk_score < self.THRESHOLD_HIGH_RISK:
             risk_level = "medium"
             decision = "require_liveness"
             liveness_required = True
-            reason = "Risco médio - Verificação biométrica necessária"
+            reason = "Medium risk - Biometric verification required"
         else:
             risk_level = "high"
             decision = "require_liveness"
             liveness_required = True
-            reason = f"Alto risco - Verificação biométrica obrigatória. {location_reason} {amount_reason} {velocity_reason}"
+            reason = f"High risk - Biometric verification required. {location_reason} {amount_reason} {velocity_reason}"
         
         return {
             'risk_score': risk_score,

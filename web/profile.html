@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Perfil - BioTrust</title>
+    <title>Profile - BioTrust</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -327,10 +327,10 @@
                     <i class="fas fa-home mr-1"></i> Dashboard
                 </a>
                 <a href="/static/cards.html" class="navbar-link">
-                    <i class="fas fa-credit-card mr-1"></i> Cartões
+                    <i class="fas fa-credit-card mr-1"></i> Cards
                 </a>
                 <a href="/static/transaction-history.html" class="navbar-link">
-                    <i class="fas fa-history mr-1"></i> Histórico
+                    <i class="fas fa-history mr-1"></i> History
                 </a>
                 
                 <div class="user-menu">
@@ -342,10 +342,10 @@
                     
                     <div class="user-dropdown" id="user-dropdown">
                         <a href="/static/profile.html" class="active">
-                            <i class="fas fa-user mr-2"></i> Meu Perfil
+                            <i class="fas fa-user mr-2"></i> My Profile
                         </a>
                         <a href="#" onclick="logout()" class="logout">
-                            <i class="fas fa-sign-out-alt mr-2"></i> Sair
+                            <i class="fas fa-sign-out-alt mr-2"></i> Sign Out
                         </a>
                     </div>
                 </div>
@@ -359,13 +359,13 @@
             <div class="back-button" onclick="goBack()">
                 <i class="fas fa-arrow-left"></i>
             </div>
-            <h1 class="text-xl font-bold">Perfil</h1>
+            <h1 class="text-xl font-bold">Profile</h1>
             <div style="width: 40px;"></div>
         </div>
         
         <div class="text-center">
             <div class="profile-avatar" id="user-initials">JD</div>
-            <h2 class="text-2xl font-bold mb-1" id="user-name">João Doe</h2>
+            <h2 class="text-2xl font-bold mb-1" id="user-name">John Doe</h2>
             <p class="text-sm opacity-90" id="user-email">joao@example.com</p>
         </div>
     </div>
@@ -374,14 +374,14 @@
     <div style="padding: 0 20px; margin-top: -40px; max-width: 600px; margin-left: auto; margin-right: auto;">
         <!-- Account Info -->
         <div class="profile-card fade-in">
-            <h3 class="text-sm font-semibold text-gray-500 mb-3 uppercase">Informações da Conta</h3>
+            <h3 class="text-sm font-semibold text-gray-500 mb-3 uppercase">Account Information</h3>
             
             <div class="profile-item">
                 <div class="profile-icon" style="background: #dbeafe; color: #2563eb;">
                     <i class="fas fa-user"></i>
                 </div>
                 <div style="flex: 1;">
-                    <div class="text-sm text-gray-500">Nome</div>
+                    <div class="text-sm text-gray-500">Name</div>
                     <div class="font-semibold text-gray-800" id="profile-name">-</div>
                 </div>
             </div>
@@ -401,7 +401,7 @@
                     <i class="fas fa-phone"></i>
                 </div>
                 <div style="flex: 1;">
-                    <div class="text-sm text-gray-500">Telefone</div>
+                    <div class="text-sm text-gray-500">Phone</div>
                     <div class="font-semibold text-gray-800" id="profile-phone">-</div>
                 </div>
             </div>
@@ -409,31 +409,31 @@
         
         <!-- Account Stats -->
         <div class="profile-card fade-in" style="animation-delay: 0.1s;">
-            <h3 class="text-sm font-semibold text-gray-500 mb-3 uppercase">Estatísticas</h3>
+            <h3 class="text-sm font-semibold text-gray-500 mb-3 uppercase">Statistics</h3>
             
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
                 <div style="background: #f0fdf4; padding: 16px; border-radius: 12px;">
                     <div class="text-2xl font-bold text-green-600" id="total-cards">0</div>
-                    <div class="text-xs text-gray-600 mt-1">Cartões</div>
+                    <div class="text-xs text-gray-600 mt-1">Cards</div>
                 </div>
                 <div style="background: #fef3c7; padding: 16px; border-radius: 12px;">
                     <div class="text-2xl font-bold text-yellow-600" id="account-age">0d</div>
-                    <div class="text-xs text-gray-600 mt-1">Conta ativa</div>
+                    <div class="text-xs text-gray-600 mt-1">Active account</div>
                 </div>
             </div>
         </div>
         
         <!-- Settings -->
         <div class="profile-card fade-in" style="animation-delay: 0.2s;">
-            <h3 class="text-sm font-semibold text-gray-500 mb-3 uppercase">Definições</h3>
+            <h3 class="text-sm font-semibold text-gray-500 mb-3 uppercase">Settings</h3>
             
             <div class="profile-item" onclick="showComingSoon()">
                 <div class="profile-icon" style="background: #f3f4f6; color: #6b7280;">
                     <i class="fas fa-bell"></i>
                 </div>
                 <div style="flex: 1;">
-                    <div class="font-semibold text-gray-800">Notificações</div>
-                    <div class="text-sm text-gray-500">Gerir preferências</div>
+                    <div class="font-semibold text-gray-800">Notifications</div>
+                    <div class="text-sm text-gray-500">Manage preferences</div>
                 </div>
                 <i class="fas fa-chevron-right text-gray-400"></i>
             </div>
@@ -443,8 +443,8 @@
                     <i class="fas fa-shield-alt"></i>
                 </div>
                 <div style="flex: 1;">
-                    <div class="font-semibold text-gray-800">Segurança</div>
-                    <div class="text-sm text-gray-500">Alterar password</div>
+                    <div class="font-semibold text-gray-800">Security</div>
+                    <div class="text-sm text-gray-500">Change password</div>
                 </div>
                 <i class="fas fa-chevron-right text-gray-400"></i>
             </div>
@@ -454,8 +454,8 @@
                     <i class="fas fa-question-circle"></i>
                 </div>
                 <div style="flex: 1;">
-                    <div class="font-semibold text-gray-800">Ajuda & Suporte</div>
-                    <div class="text-sm text-gray-500">Centro de ajuda</div>
+                    <div class="font-semibold text-gray-800">Help & Support</div>
+                    <div class="text-sm text-gray-500">Help center</div>
                 </div>
                 <i class="fas fa-chevron-right text-gray-400"></i>
             </div>
@@ -468,7 +468,7 @@
                     <i class="fas fa-sign-out-alt"></i>
                 </div>
                 <div style="flex: 1;">
-                    <div class="font-semibold">Terminar Sessão</div>
+                    <div class="font-semibold">Sign Out</div>
                 </div>
                 <i class="fas fa-chevron-right text-red-400"></i>
             </div>
@@ -486,15 +486,15 @@
         <div class="flex">
             <div class="nav-item" onclick="window.location.href='/static/dashboard.html'">
                 <i class="fas fa-home text-2xl mb-1"></i>
-                <p class="text-xs font-medium">Início</p>
+                <p class="text-xs font-medium">Home</p>
             </div>
             <div class="nav-item" onclick="window.location.href='/static/cards.html'">
                 <i class="fas fa-credit-card text-2xl mb-1"></i>
-                <p class="text-xs font-medium">Cartões</p>
+                <p class="text-xs font-medium">Cards</p>
             </div>
             <div class="nav-item active">
                 <i class="fas fa-user text-2xl mb-1"></i>
-                <p class="text-xs font-medium">Perfil</p>
+                <p class="text-xs font-medium">Profile</p>
             </div>
         </div>
     </div>
@@ -526,7 +526,7 @@
             
             document.getElementById('profile-name').textContent = currentUser.name;
             document.getElementById('profile-email').textContent = currentUser.email;
-            document.getElementById('profile-phone').textContent = currentUser.phone || 'Não definido';
+            document.getElementById('profile-phone').textContent = currentUser.phone || 'Not set';
         }
         
         // Load user stats
@@ -544,7 +544,7 @@
                 const today = new Date();
                 const daysDiff = Math.floor((today - accountCreated) / (1000 * 60 * 60 * 24));
                 
-                document.getElementById('account-age').textContent = daysDiff > 0 ? `${daysDiff}d` : 'Hoje';
+                document.getElementById('account-age').textContent = daysDiff > 0 ? `${daysDiff}d` : 'Today';
             } catch (error) {
                 console.error('Error loading stats:', error);
             }
@@ -552,7 +552,7 @@
         
         // Logout
         function logout() {
-            if (confirm('Tem certeza que deseja terminar a sessão?')) {
+            if (confirm('Are you sure you want to sign out?')) {
                 localStorage.clear();
                 window.location.href = '/web';
             }
@@ -565,7 +565,7 @@
         
         // Coming soon
         function showComingSoon() {
-            alert('Funcionalidade em desenvolvimento! 🚀');
+            alert('Feature in development!');
         }
         
         // Toggle user dropdown menu
@@ -592,3 +592,6 @@
     </script>
 </body>
 </html>
+
+
+

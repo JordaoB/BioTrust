@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
@@ -54,7 +54,7 @@
         <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
             <div>
                 <h1 class="text-3xl font-black tracking-tight">Fraud Ops Command Center</h1>
-                <p class="text-slate-300">Transações em tempo real, scores de risco e falhas de liveness</p>
+                <p class="text-slate-300">Real-time transactions, risk scores, and liveness failures</p>
             </div>
             <div class="flex items-center gap-3 glass rounded-xl px-4 py-2">
                 <div class="pulse-dot"></div>
@@ -67,22 +67,22 @@
 
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
             <div class="glass rounded-2xl p-4 xl:col-span-2">
-                <h2 class="font-bold mb-3">Fluxo de Risco (últimas transações)</h2>
-                <canvas id="risk-stream-chart" height="120" aria-label="Gráfico de evolução de risco" role="img"></canvas>
+                <h2 class="font-bold mb-3">Risk Stream (latest transactions)</h2>
+                <canvas id="risk-stream-chart" height="120" aria-label="Risk evolution chart" role="img"></canvas>
             </div>
             <div class="glass rounded-2xl p-4">
-                <h2 class="font-bold mb-3">Distribuição de Status</h2>
-                <canvas id="status-chart" height="120" aria-label="Gráfico de distribuição de estados" role="img"></canvas>
+                <h2 class="font-bold mb-3">Status Distribution</h2>
+                <canvas id="status-chart" height="120" aria-label="Status distribution chart" role="img"></canvas>
             </div>
         </div>
 
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div class="glass rounded-2xl p-4 xl:col-span-2">
-                <h2 class="font-bold mb-3">Feed de Fraude em Tempo Real</h2>
+                <h2 class="font-bold mb-3">Real-Time Fraud Feed</h2>
                 <div id="fraud-feed" class="space-y-3 max-h-[520px] overflow-y-auto"></div>
             </div>
             <div class="glass rounded-2xl p-4">
-                <h2 class="font-bold mb-3">Alertas Ativos</h2>
+                <h2 class="font-bold mb-3">Active Alerts</h2>
                 <div id="alerts" class="space-y-3"></div>
             </div>
         </div>
@@ -92,3 +92,6 @@
     <script src="/static/js/admin-fraud.js?v=1"></script>
 </body>
 </html>
+
+
+

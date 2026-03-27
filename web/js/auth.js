@@ -1,5 +1,5 @@
-/**
- * BioTrust Auth - Sistema de Autenticação
+﻿/**
+ * BioTrust Auth - Authentication System
  * v1.0 - MBWay Style Interface
  */
 
@@ -42,18 +42,18 @@ async function handleLogin(event) {
             localStorage.setItem('user', JSON.stringify(data.user));
             
             // Success animation
-            showSuccessMessage('Login bem-sucedido!');
+            showSuccessMessage('Login successful!');
             
             // Redirect to dashboard
             setTimeout(() => {
                 window.location.href = '/static/dashboard.html';
             }, 1000);
         } else {
-            showErrorMessage(data.message || 'Email ou password incorreto');
+            showErrorMessage(data.message || 'Incorrect email or password');
         }
     } catch (error) {
         console.error('Login error:', error);
-        showErrorMessage('Erro de conexão. Tente novamente.');
+        showErrorMessage('Connection error. Please try again.');
     }
 }
 
@@ -87,18 +87,18 @@ async function handleRegister(event) {
             localStorage.setItem('user', JSON.stringify(data.user));
             
             // Success animation
-            showSuccessMessage('Conta criada com sucesso! Redirecionando...');
+            showSuccessMessage('Account created successfully! Redirecting...');
             
             // Redirect to dashboard
             setTimeout(() => {
                 window.location.href = '/static/dashboard.html';
             }, 1500);
         } else {
-            showErrorMessage(data.detail || 'Erro ao criar conta');
+            showErrorMessage(data.detail || 'Error creating account');
         }
     } catch (error) {
         console.error('Register error:', error);
-        showErrorMessage('Erro de conexão. Tente novamente.');
+        showErrorMessage('Connection error. Please try again.');
     }
 }
 
@@ -218,10 +218,10 @@ async function attemptTokenRefresh() {
             const data = await response.json();
             localStorage.setItem('access_token', data.access_token);
             localStorage.setItem('access_token_expires_at', data.access_token_expires_at);
-            console.log('✅ Token refreshed successfully');
+            console.log('âœ… Token refreshed successfully');
             return true;
         } else {
-            console.log('❌ Token refresh failed');
+            console.log('âŒ Token refresh failed');
             return false;
         }
     } catch (error) {
@@ -248,3 +248,5 @@ setInterval(() => {
         attemptTokenRefresh();
     }
 }, 60000); // Check every minute
+
+
