@@ -894,7 +894,7 @@ if (!document.getElementById('notification-styles')) {
 }
 
 function showComingSoon() {
-    showSuccess('Funcionalidade em desenvolvimento! ðŸš€');
+    showSuccess('Funcionalidade em desenvolvimento! 🚀');
 }
 
 // Auto-format card number input

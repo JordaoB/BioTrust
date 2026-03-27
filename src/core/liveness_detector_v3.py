@@ -28,6 +28,11 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 try:
+    from .rppg_detector import RPPG_Detector, RPPGConfig
+except ImportError:
+    from src.core.rppg_detector import RPPG_Detector, RPPGConfig
+
+try:
     from backend.utils.logger import logger, log_liveness_attempt
     LOGGING_ENABLED = True
 except ImportError:
@@ -150,6 +155,12 @@ class LivenessDetectorV3:
         self.FOREHEAD = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323]
 
         self.WINDOW_NAME = "BioTrust V3 - Advanced Liveness"
+
+        # Dedicated rPPG pipeline integrated into liveness responses.
+        self.rppg_detector = RPPG_Detector(RPPGConfig(fps=30.0, buffer_seconds=10.0))
+        self.latest_rppg_bpm = None
+        self.latest_rppg_raw_bpm = None
+        self.latest_rppg_ready = False
 
     # ========== DETECTION METHODS ==========
 
@@ -338,6 +349,11 @@ class LivenessDetectorV3:
         self.green_values = []
         self.timestamps = []
 
+        self.rppg_detector.reset()
+        self.latest_rppg_bpm = None
+        self.latest_rppg_raw_bpm = None
+        self.latest_rppg_ready = False
+
         # Generate challenge sequence
         risk_mapping = {
             "low": (2, 3),
@@ -375,19 +391,31 @@ class LivenessDetectorV3:
             return {"status": "failed", "feedback": "Session not started - call start_web_session() first"}
 
         self.frame_count_web += 1
+
+        rppg_result = self.rppg_detector.process_frame(frame)
+        self.latest_rppg_bpm = rppg_result.get("bpm")
+        self.latest_rppg_raw_bpm = rppg_result.get("raw_bpm")
+        self.latest_rppg_ready = bool(rppg_result.get("signal_ready", False))
+
+        def with_rppg(payload):
+            payload["rppg_bpm"] = self.latest_rppg_bpm
+            payload["rppg_raw_bpm"] = self.latest_rppg_raw_bpm
+            payload["rppg_signal_ready"] = self.latest_rppg_ready
+            return payload
+
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.face_mesh.process(rgb)
 
         h, w, _ = frame.shape
 
         if not results.multi_face_landmarks:
-            return {
+            return with_rppg({
                 "status": "in_progress",
                 "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
                 "current_challenge": self._get_current_challenge_info(),
                 "feedback": "Face not detected - position yourself in front of the camera.",
                 "completed_challenges": self.current_challenge_idx
-            }
+            })
 
         face_landmarks = results.multi_face_landmarks[0]
         landmarks = np.array([[int(lm.x * w), int(lm.y * h)] for lm in face_landmarks.landmark])
@@ -412,23 +440,23 @@ class LivenessDetectorV3:
                 avg_color_var = np.mean(self.color_variance_history)
 
                 if avg_texture < self.TEXTURE_THRESHOLD:
-                    return {"status": "failed", "progress": 0,
+                    return with_rppg({"status": "failed", "progress": 0,
                             "feedback": "SPOOFING DETECTED: Screen/monitor detected",
                             "anti_spoofing_failed": True, "reason": "screen_detected",
                             "current_challenge": self._get_current_challenge_info(),
-                            "completed_challenges": 0}
+                        "completed_challenges": 0})
                 if avg_moire > self.MOIRE_THRESHOLD:
-                    return {"status": "failed", "progress": 0,
+                    return with_rppg({"status": "failed", "progress": 0,
                             "feedback": "SPOOFING DETECTED: Interference pattern detected",
                             "anti_spoofing_failed": True, "reason": "moire_detected",
                             "current_challenge": self._get_current_challenge_info(),
-                            "completed_challenges": 0}
+                        "completed_challenges": 0})
                 if avg_color_var < self.COLOR_VARIANCE_MIN:
-                    return {"status": "failed", "progress": 0,
+                    return with_rppg({"status": "failed", "progress": 0,
                             "feedback": "SPOOFING DETECTED: Recorded video detected",
                             "anti_spoofing_failed": True, "reason": "video_detected",
                             "current_challenge": self._get_current_challenge_info(),
-                            "completed_challenges": 0}
+                        "completed_challenges": 0})
 
         # Extract facial features
         left_eye = landmarks[self.LEFT_EYE]
@@ -470,13 +498,13 @@ class LivenessDetectorV3:
 
         # All challenges done?
         if self.current_challenge_idx >= len(self.challenge_sequence):
-            return {
+            return with_rppg({
                 "status": "completed",
                 "progress": 100,
                 "current_challenge": {"name": "Completed", "type": "done", "instruction": "Verification complete"},
                 "feedback": "All checks completed!",
                 "completed_challenges": len(self.challenge_sequence)
-            }
+            })
 
         current_challenge = self.challenge_sequence[self.current_challenge_idx]
         challenge_info = self.CHALLENGE_TYPES[current_challenge]
@@ -484,13 +512,13 @@ class LivenessDetectorV3:
         # Timeout check
         frames_in_challenge = self.frame_count_web - self.challenge_start_frame
         if frames_in_challenge > challenge_info["timeout_frames"]:
-            return {
+            return with_rppg({
                 "status": "failed",
                 "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
                 "current_challenge": self._get_current_challenge_info(),
                 "feedback": f"Time expired: {challenge_info['name']}",
                 "completed_challenges": self.current_challenge_idx
-            }
+            })
 
         # Arm challenge — require stable frontal pose first
         if not self.challenge_armed:
@@ -501,23 +529,23 @@ class LivenessDetectorV3:
                     self.challenge_counter = 0
                     self.blink_frame_counter = 0
                     self.must_return_neutral = False
-                    return {
+                    return with_rppg({
                         "status": "in_progress",
                         "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
                         "current_challenge": self._get_current_challenge_info(),
                         "feedback": f"Ready! {challenge_info['instruction']}",
                         "completed_challenges": self.current_challenge_idx
-                    }
+                    })
             else:
                 self.frontal_stable_counter = max(0, self.frontal_stable_counter - 1)
 
-            return {
+            return with_rppg({
                 "status": "in_progress",
                 "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
                 "current_challenge": self._get_current_challenge_info(),
                 "feedback": "Look straight at the camera...",
                 "completed_challenges": self.current_challenge_idx
-            }
+            })
 
         # ========== CHALLENGE LOGIC ==========
         challenge_satisfied = False
@@ -601,21 +629,21 @@ class LivenessDetectorV3:
             self.must_return_neutral = False
 
             if self.current_challenge_idx >= len(self.challenge_sequence):
-                return {
+                return with_rppg({
                     "status": "completed",
                     "progress": 100,
                     "current_challenge": {"name": "Completed", "type": "done", "instruction": "Verification complete"},
                     "feedback": "Verification complete!",
                     "completed_challenges": len(self.challenge_sequence)
-                }
+                })
 
-            return {
+            return with_rppg({
                 "status": "in_progress",
                 "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
                 "current_challenge": self._get_current_challenge_info(),
                 "feedback": f"Challenge {self.current_challenge_idx}/{len(self.challenge_sequence)} completed!",
                 "completed_challenges": self.current_challenge_idx
-            }
+            })
 
         # Progress within current challenge (capped at 99% until truly done)
         base_progress = self.current_challenge_idx / len(self.challenge_sequence)
@@ -631,13 +659,13 @@ class LivenessDetectorV3:
         within = min(within, 0.99)
         progress = (base_progress + within / len(self.challenge_sequence)) * 100
 
-        return {
+        return with_rppg({
             "status": "in_progress",
             "progress": min(progress, 99.0),
             "current_challenge": self._get_current_challenge_info(),
             "feedback": feedback,
             "completed_challenges": self.current_challenge_idx
-        }
+        })
 
     def _get_current_challenge_info(self):
         if self.current_challenge_idx >= len(self.challenge_sequence):
@@ -680,6 +708,11 @@ class LivenessDetectorV3:
         self.green_values = []
         self.timestamps = []
 
+        self.rppg_detector.reset()
+        self.latest_rppg_bpm = None
+        self.latest_rppg_raw_bpm = None
+        self.latest_rppg_ready = False
+
         risk_mapping = {
             "low": (3, 4), "medium": (4, 5), "high": (5, 6), "critical": (6, 7)
         }
@@ -708,6 +741,12 @@ class LivenessDetectorV3:
                 frame_count += 1
                 # Desktop mode: flip for mirror display (user sees themselves mirrored)
                 frame = cv2.flip(frame, 1)
+
+                rppg_result = self.rppg_detector.process_frame(frame)
+                self.latest_rppg_bpm = rppg_result.get("bpm")
+                self.latest_rppg_raw_bpm = rppg_result.get("raw_bpm")
+                self.latest_rppg_ready = bool(rppg_result.get("signal_ready", False))
+
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 results = self.face_mesh.process(rgb)
                 h, w, _ = frame.shape
@@ -830,10 +869,23 @@ class LivenessDetectorV3:
             return {"success": False, "message": "[FAIL] Not all challenges completed",
                     "challenges_completed": challenges_completed}
 
+        if require_rppg and self.latest_rppg_bpm is None:
+            return {
+                "success": False,
+                "message": "[FAIL] Liveness passed but rPPG BPM not stable/available",
+                "challenges_completed": challenges_completed,
+                "rppg_bpm": self.latest_rppg_bpm,
+                "rppg_raw_bpm": self.latest_rppg_raw_bpm,
+                "rppg_signal_ready": self.latest_rppg_ready,
+            }
+
         return {
             "success": True,
             "message": "[SUCCESS] LIVENESS VERIFIED",
-            "challenges_completed": challenges_completed
+            "challenges_completed": challenges_completed,
+            "rppg_bpm": self.latest_rppg_bpm,
+            "rppg_raw_bpm": self.latest_rppg_raw_bpm,
+            "rppg_signal_ready": self.latest_rppg_ready,
         }
 
 
