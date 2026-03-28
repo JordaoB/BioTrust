@@ -98,7 +98,14 @@ async def start_liveness(
     if not transaction.get("liveness_required"):
         raise HTTPException(status_code=400, detail="Liveness not required for this transaction")
 
-    session = LivenessSession(request.transaction_id, request.risk_level)
+    try:
+        session = LivenessSession(request.transaction_id, request.risk_level)
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Unable to initialize liveness session: {str(e)}"
+        )
+
     active_sessions[session.session_id] = session
 
     # Purge sessions older than 5 minutes

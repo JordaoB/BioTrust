@@ -38,6 +38,85 @@ let activeRunId = 0;
 const IDENTITY_CHECK_INTERVAL_MS = 2000;
 const MAX_IDENTITY_MISMATCHES = 2;
 const NO_FACE_CANCEL_SECONDS = 5;
+const LIVENESS_START_RETRYABLE_STATUS = new Set([502, 503, 504]);
+const LIVENESS_START_MAX_ATTEMPTS = 3;
+const LIVENESS_START_TIMEOUT_MS = 12000;
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function readResponseError(response, fallbackMessage) {
+    try {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            const data = await response.json();
+            return data.detail || data.message || fallbackMessage;
+        }
+
+        const text = (await response.text()).trim();
+        return text || fallbackMessage;
+    } catch (_) {
+        return fallbackMessage;
+    }
+}
+
+async function startLivenessSessionWithRetry(transactionId) {
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= LIVENESS_START_MAX_ATTEMPTS; attempt++) {
+        const isRetry = attempt > 1;
+        if (isRetry) {
+            setLivenessState('warning', `A reconectar ao servidor... tentativa ${attempt}/${LIVENESS_START_MAX_ATTEMPTS}`);
+            showLivenessAlert('Ligacao instavel ao servidor. A tentar novamente...', 'warning');
+            await sleep(650 * attempt);
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), LIVENESS_START_TIMEOUT_MS);
+
+        try {
+            const response = await fetch('/api/liveness-stream/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    transaction_id: transactionId,
+                    risk_level: 'medium'
+                }),
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const fallbackMessage = `Error ${response.status} starting session`;
+                const detail = await readResponseError(response, fallbackMessage);
+
+                if (LIVENESS_START_RETRYABLE_STATUS.has(response.status) && attempt < LIVENESS_START_MAX_ATTEMPTS) {
+                    lastError = new Error(detail);
+                    continue;
+                }
+
+                throw new Error(detail);
+            }
+
+            return await response.json();
+        } catch (error) {
+            clearTimeout(timeoutId);
+            const isAbort = error?.name === 'AbortError';
+            const retryableNetworkError = isAbort || error instanceof TypeError;
+
+            if (retryableNetworkError && attempt < LIVENESS_START_MAX_ATTEMPTS) {
+                lastError = new Error(isAbort ? 'Server timeout while starting liveness session' : error.message);
+                continue;
+            }
+
+            throw error;
+        }
+    }
+
+    throw lastError || new Error('Failed to start liveness session');
+}
 
 async function runFaceCompareInsideLiveness(userId) {
     const statusResponse = await fetch(`/api/face-id/status/${userId}`);
@@ -243,21 +322,7 @@ async function startLivenessVerification(transactionId, userId) {
         updateProgress(12);
         setLivenessState('normal', 'Identidade confirmada');
 
-        const response = await fetch('/api/liveness-stream/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                transaction_id: transactionId,
-                risk_level: 'medium'
-            })
-        });
-
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.detail || `Error ${response.status} starting session`);
-        }
-
-        const data = await response.json();
+        const data = await startLivenessSessionWithRetry(transactionId);
         const sessionId = data.session_id;
         activeSessionId = sessionId;
         activeRunId += 1;
@@ -271,11 +336,15 @@ async function startLivenessVerification(transactionId, userId) {
             'Keep your face centered in the camera...'
         );
         updateProgress(0);
+        setLivenessState('normal', 'Desafios iniciados');
+        hideLivenessAlert();
 
         startFrameStream(sessionId, activeRunId, userId);
 
     } catch (error) {
         console.error('[Liveness] Startup error:', error);
+        setLivenessState('error', 'Nao foi possivel iniciar');
+        showLivenessAlert('Falha ao iniciar desafios de liveness. Verifica a ligacao e tenta novamente.', 'error');
         if (typeof showError === 'function') {
             showError('Error starting biometric verification: ' + error.message);
         } else {
