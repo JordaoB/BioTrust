@@ -432,6 +432,7 @@ class LivenessDetectorV3:
         def with_rppg(payload):
             # Show BPM when signal is actually ready so users get realtime feedback,
             # while precheck gate (blink + stability) still blocks spoof progression.
+            payload.setdefault("face_detected", True)
             payload["rppg_bpm"] = self.latest_rppg_bpm if self.latest_rppg_ready else None
             payload["rppg_raw_bpm"] = self.latest_rppg_raw_bpm if self.latest_rppg_ready else None
             payload["rppg_signal_ready"] = self.latest_rppg_ready
@@ -454,7 +455,8 @@ class LivenessDetectorV3:
                 "progress": base_progress,
                 "current_challenge": self._get_current_challenge_info(),
                 "feedback": "Face not detected - position yourself in front of the camera.",
-                "completed_challenges": self.current_challenge_idx
+                "completed_challenges": self.current_challenge_idx,
+                "face_detected": False,
             })
 
         face_landmarks = results.multi_face_landmarks[0]

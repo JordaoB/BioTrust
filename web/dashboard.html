@@ -327,6 +327,55 @@
                 border-radius: 16px;
             }
         }
+
+        .liveness-state-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 9999px;
+            transition: background-color 0.2s ease;
+        }
+
+        .liveness-state-normal {
+            background-color: #10B981;
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+            animation: livenessPulse 1.8s infinite;
+        }
+
+        .liveness-state-warning {
+            background-color: #F59E0B;
+            box-shadow: none;
+            animation: none;
+        }
+
+        .liveness-state-error {
+            background-color: #EF4444;
+            box-shadow: none;
+            animation: none;
+        }
+
+        @keyframes livenessPulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+            70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        @media (max-width: 768px) {
+            #liveness-modal .liveness-shell {
+                height: 96svh;
+                max-height: 96svh;
+                border-radius: 18px;
+            }
+
+            #liveness-modal .liveness-grid {
+                height: 60vh;
+                gap: 10px;
+            }
+
+            #liveness-modal .liveness-selfie {
+                min-height: 120px;
+                max-height: 140px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -633,20 +682,32 @@
     </div>
 
     <!-- Liveness Modal (browser camera) -->
-    <div id="liveness-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-[120] flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-labelledby="liveness-title">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full h-[92vh] max-h-[92vh] overflow-hidden flex flex-col">
-            <div class="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 rounded-t-2xl shrink-0">
+    <div id="liveness-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-[120] flex items-center justify-center p-2 md:p-3" role="dialog" aria-modal="true" aria-labelledby="liveness-title">
+        <div class="liveness-shell bg-white rounded-2xl shadow-2xl max-w-3xl w-full h-[94svh] max-h-[94svh] md:h-[92vh] md:max-h-[92vh] overflow-hidden flex flex-col">
+            <div class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-500 text-white p-4 rounded-t-2xl shrink-0">
                 <h2 id="liveness-title" class="text-2xl font-bold flex items-center">
                     <i class="fas fa-shield-halved mr-3"></i>
                     Liveness Verification
                 </h2>
-                <p class="text-purple-100 text-sm mt-1">
+                <p class="text-emerald-50 text-sm mt-1">
                     Follow the instructions to prove you are human
                 </p>
             </div>
 
             <div class="p-4 flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 h-[50vh] md:h-[58vh] shrink-0">
+                <div class="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 shrink-0">
+                    <div class="flex items-center gap-2">
+                        <span id="liveness-state-dot" class="liveness-state-dot liveness-state-normal"></span>
+                        <p id="liveness-state-text" class="text-sm font-semibold text-emerald-900">A validar presenca...</p>
+                    </div>
+                    <p class="text-xs text-emerald-800">Nao saias da camara</p>
+                </div>
+
+                <div id="liveness-alert" class="hidden rounded-xl border px-3 py-2 text-sm shrink-0">
+                    <p id="liveness-alert-text"></p>
+                </div>
+
+                <div class="liveness-grid grid grid-cols-1 md:grid-cols-2 gap-3 h-[52vh] md:h-[58vh] shrink-0">
                     <div class="relative bg-gray-900 rounded-xl overflow-hidden">
                         <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
 
@@ -668,20 +729,20 @@
                         </div>
                     </div>
 
-                    <div class="relative bg-gray-100 rounded-xl overflow-hidden border border-gray-200 flex flex-col items-center justify-center">
+                    <div class="liveness-selfie relative bg-gray-100 rounded-xl overflow-hidden border border-gray-200 flex flex-col items-center justify-center">
                         <p class="absolute top-2 text-xs font-semibold text-gray-600 uppercase tracking-wide">Master Selfie</p>
                         <img id="stored-selfie-preview" src="" alt="Stored master selfie" class="w-full h-full object-cover" />
                     </div>
                 </div>
 
                 <div class="bg-gray-200 rounded-full h-2.5 overflow-hidden shrink-0">
-                    <div id="liveness-progress" class="bg-gradient-to-r from-purple-600 to-pink-600 h-full transition-all duration-300" style="width: 0%"></div>
+                    <div id="liveness-progress" class="bg-gradient-to-r from-emerald-600 to-teal-500 h-full transition-all duration-300" style="width: 0%"></div>
                 </div>
 
-                <div class="bg-purple-50 border-2 border-purple-200 rounded-xl p-2.5 shrink-0">
-                    <p class="text-xs md:text-sm text-purple-900">
+                <div class="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-2.5 shrink-0">
+                    <p class="text-xs md:text-sm text-emerald-900">
                         <i class="fas fa-info-circle mr-2"></i>
-                        <strong>Tip:</strong> allow camera access, keep good lighting, and keep your face centered.
+                        <strong>Tip:</strong> allow camera access, keep good lighting, and keep your face centered. If no face is visible for 5 seconds, verification is cancelled.
                     </p>
                 </div>
 
@@ -696,7 +757,7 @@
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/token-manager.js"></script>
-    <script src="/static/js/webcam.js?v=13"></script>
+    <script src="/static/js/webcam.js?v=14"></script>
     <script src="/static/js/dashboard.js?v=5"></script>
 </body>
 </html>

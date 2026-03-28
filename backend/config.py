@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     
     # Liveness Detection
     LIVENESS_TIMEOUT_SECONDS: int = 90
+    LIVENESS_NO_FACE_TIMEOUT_SECONDS: int = 5
     LIVENESS_ENABLE_PASSIVE: bool = True
     
     # Risk Engine Thresholds

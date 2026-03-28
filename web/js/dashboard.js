@@ -979,11 +979,17 @@ function showLivenessVerification(transaction) {
                 </div>
             `);
         } else {
+            const backendMessage = result.message || 'Could not validate liveness.';
+            const normalizedMessage = backendMessage.toLowerCase();
+            const displayMessage = normalizedMessage.includes('face lost for more than')
+                ? 'Rosto ausente durante mais de 5 segundos. A transacao foi cancelada por seguranca.'
+                : backendMessage;
+
             showError(`
                 <div class="text-center">
                     <div class="text-6xl mb-4">❌</div>
                     <h3 class="text-2xl font-bold mb-2">Verification Failed</h3>
-                    <p class="text-gray-600">${result.message || 'Could not validate liveness.'}</p>
+                    <p class="text-gray-600">${displayMessage}</p>
                 </div>
             `);
 

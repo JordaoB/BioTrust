@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from datetime import datetime
 from backend.database import get_database
+from backend.config import settings
 from backend.services.transaction_settlement import settle_transaction_by_id
 from bson import ObjectId
 import sys
@@ -45,6 +46,10 @@ class LivenessSession:
 
         self.completed = False
         self.success = False
+        self.failure_reason = None
+        self.face_seen_once = False
+        self.last_face_seen_at = None
+        self.no_face_timeout_seconds = settings.LIVENESS_NO_FACE_TIMEOUT_SECONDS
 
 
 class StartLivenessRequest(BaseModel):
@@ -167,6 +172,13 @@ async def process_frame(
     # Process with detector
     result = session.detector.process_web_frame(frame)
 
+    face_detected = bool(result.get("face_detected", True))
+    now = datetime.utcnow()
+
+    if face_detected:
+        session.face_seen_once = True
+        session.last_face_seen_at = now
+
     # Ensure current_challenge always has an 'instruction' key for the frontend
     challenge = result.get("current_challenge", {})
     if "instruction" not in challenge:
@@ -174,6 +186,33 @@ async def process_frame(
     result["current_challenge"] = challenge
 
     completed_count = result.get("completed_challenges", session.detector.current_challenge_idx)
+
+    # If a face was already detected but then disappears for too long, fail the session.
+    if (
+        result.get("status") == "in_progress"
+        and not face_detected
+        and session.face_seen_once
+        and session.last_face_seen_at is not None
+    ):
+        missing_for_seconds = (now - session.last_face_seen_at).total_seconds()
+        if missing_for_seconds >= session.no_face_timeout_seconds:
+            session.completed = True
+            session.success = False
+            session.failure_reason = "face_absent_timeout"
+            timeout_seconds = int(session.no_face_timeout_seconds)
+            return LivenessResponse(
+                session_id=session_id,
+                current_challenge=result["current_challenge"],
+                progress=result.get("progress", 0.0),
+                total_challenges=session.total_challenges,
+                completed_challenges=completed_count,
+                feedback=f"Face lost for more than {timeout_seconds} seconds. Verification cancelled.",
+                status="failed",
+                rppg_bpm=result.get("rppg_bpm"),
+                rppg_raw_bpm=result.get("rppg_raw_bpm"),
+                rppg_signal_ready=bool(result.get("rppg_signal_ready", False)),
+                rppg_debug_reason=result.get("rppg_debug_reason"),
+            )
 
     if result["status"] == "completed":
         session.completed = True
@@ -195,6 +234,8 @@ async def process_frame(
     if result["status"] == "failed":
         session.completed = True
         session.success = False
+        if not session.failure_reason:
+            session.failure_reason = result.get("reason") or result.get("feedback")
         return LivenessResponse(
             session_id=session_id,
             current_challenge=result["current_challenge"],
@@ -255,7 +296,8 @@ async def complete_liveness(
                     "success": session.success,
                     "challenges_completed": completed_count,
                     "total_challenges": session.total_challenges,
-                    "timestamp": datetime.utcnow()
+                    "timestamp": datetime.utcnow(),
+                    "reason": session.failure_reason,
                 },
                 "status": "approved" if session.success else "rejected",
                 "updated_at": datetime.utcnow()
@@ -286,7 +328,15 @@ async def complete_liveness(
 
     return {
         "success": session.success,
-        "message": "Verification approved!" if session.success else "Verification failed.",
+        "message": (
+            "Verification approved!"
+            if session.success
+            else (
+                f"Face lost for more than {int(session.no_face_timeout_seconds)} seconds. Verification cancelled."
+                if session.failure_reason == "face_absent_timeout"
+                else "Verification failed."
+            )
+        ),
         "transaction": transaction,
         "settlement": settlement_result,
     }

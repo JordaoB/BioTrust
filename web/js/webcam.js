@@ -37,6 +37,7 @@ let activeRunId = 0;
 
 const IDENTITY_CHECK_INTERVAL_MS = 2000;
 const MAX_IDENTITY_MISMATCHES = 2;
+const NO_FACE_CANCEL_SECONDS = 5;
 
 async function runFaceCompareInsideLiveness(userId) {
     const statusResponse = await fetch(`/api/face-id/status/${userId}`);
@@ -227,16 +228,20 @@ async function startLivenessVerification(transactionId, userId) {
     try {
         console.log('[Liveness] Starting session for transaction:', transactionId);
         showLivenessModal();
+        setLivenessState('normal', 'A validar presenca...');
+        hideLivenessAlert();
 
         await initWebcam();
 
         updateChallengeUI('Identity check in progress', 'Comparing live webcam with your stored master selfie...');
         updateProgress(5);
+        setLivenessState('normal', 'A confirmar identidade...');
 
         await runFaceCompareInsideLiveness(userId);
 
         updateChallengeUI('Identity confirmed', 'Face match successful. Starting liveness challenges...');
         updateProgress(12);
+        setLivenessState('normal', 'Identidade confirmada');
 
         const response = await fetch('/api/liveness-stream/start', {
             method: 'POST',
@@ -372,6 +377,8 @@ function startFrameStream(sessionId, runId, userId) {
                     identityFailureTriggered = true;
                     clearInterval(captureInterval);
                     isCapturing = false;
+                    setLivenessState('error', 'Erro de identidade');
+                    showLivenessAlert('Pessoa diferente detetada durante a verificacao. Transacao rejeitada.', 'error');
                     updateChallengeUI('Identity mismatch detected', 'Different person detected. Rejecting transaction...');
 
                     try {
@@ -459,6 +466,26 @@ function startFrameStream(sessionId, runId, userId) {
             updateProgress(result.progress);
             updateRppgTelemetry(result);
 
+            const feedback = (result.feedback || '').toLowerCase();
+            if (result.status === 'failed') {
+                setLivenessState('error', 'Verificacao falhou');
+            } else if (feedback.includes('face not detected')) {
+                setLivenessState('warning', 'Rosto nao detetado');
+            } else {
+                setLivenessState('normal', 'Verificacao em curso');
+            }
+
+            if (feedback.includes('face lost for more than')) {
+                showLivenessAlert(
+                    `Rosto ausente por mais de ${NO_FACE_CANCEL_SECONDS}s. A transacao foi cancelada por seguranca.`,
+                    'error'
+                );
+            } else if (feedback.includes('face not detected')) {
+                showLivenessAlert('Mantem-te em frente da camara para continuar.', 'warning');
+            } else {
+                hideLivenessAlert();
+            }
+
             if (framesSent % 16 === 0) {
                 console.log(
                     `[Liveness] Frame ${framesSent} | ${result.progress.toFixed(1)}% | ${result.feedback} | ` +
@@ -470,11 +497,18 @@ function startFrameStream(sessionId, runId, userId) {
                 console.log('[Liveness] COMPLETED');
                 clearInterval(captureInterval);
                 isCapturing = false;
+                setLivenessState('normal', 'Verificacao concluida');
                 await completeLivenessVerification(sessionId, true);
             } else if (result.status === 'failed') {
                 console.log('[Liveness] FAILED:', result.feedback);
                 clearInterval(captureInterval);
                 isCapturing = false;
+
+                if (feedback.includes('face lost for more than')) {
+                    updateChallengeUI('Ausencia de rosto detetada', `Sem rosto por mais de ${NO_FACE_CANCEL_SECONDS}s. A terminar...`);
+                    await new Promise((resolve) => setTimeout(resolve, 900));
+                }
+
                 await completeLivenessVerification(sessionId, false);
             }
 
@@ -565,11 +599,59 @@ function cancelLiveness() {
 function showLivenessModal() {
     const modal = document.getElementById('liveness-modal');
     if (modal) modal.classList.remove('hidden');
+    hideLivenessAlert();
+    setLivenessState('normal', 'A preparar verificacao...');
 }
 
 function hideLivenessModal() {
     const modal = document.getElementById('liveness-modal');
     if (modal) modal.classList.add('hidden');
+    hideLivenessAlert();
+}
+
+function setLivenessState(state, text) {
+    const dotEl = document.getElementById('liveness-state-dot');
+    const textEl = document.getElementById('liveness-state-text');
+
+    if (dotEl) {
+        dotEl.classList.remove('liveness-state-normal', 'liveness-state-warning', 'liveness-state-error');
+        if (state === 'warning') {
+            dotEl.classList.add('liveness-state-warning');
+        } else if (state === 'error') {
+            dotEl.classList.add('liveness-state-error');
+        } else {
+            dotEl.classList.add('liveness-state-normal');
+        }
+    }
+
+    if (textEl && text) {
+        textEl.textContent = text;
+    }
+}
+
+function showLivenessAlert(message, type = 'warning') {
+    const alertEl = document.getElementById('liveness-alert');
+    const textEl = document.getElementById('liveness-alert-text');
+
+    if (!alertEl || !textEl || !message) {
+        return;
+    }
+
+    alertEl.classList.remove('hidden', 'bg-amber-50', 'border-amber-200', 'text-amber-900', 'bg-red-50', 'border-red-200', 'text-red-900');
+    if (type === 'error') {
+        alertEl.classList.add('bg-red-50', 'border-red-200', 'text-red-900');
+    } else {
+        alertEl.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-900');
+    }
+
+    textEl.textContent = message;
+}
+
+function hideLivenessAlert() {
+    const alertEl = document.getElementById('liveness-alert');
+    if (alertEl) {
+        alertEl.classList.add('hidden');
+    }
 }
 
 function updateRppgTelemetry(result) {
@@ -598,4 +680,4 @@ function updateProgress(progress) {
     }
 }
 
-console.log('[BioTrust] Webcam module v2.2 loaded');
+console.log('[BioTrust] Webcam module v2.4 loaded');
