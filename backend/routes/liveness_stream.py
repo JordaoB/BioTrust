@@ -56,6 +56,10 @@ class ProcessFrameRequest(BaseModel):
     frame_base64: str
 
 
+class ForceFailRequest(BaseModel):
+    reason: str | None = None
+
+
 class LivenessResponse(BaseModel):
     session_id: str
     current_challenge: dict
@@ -295,3 +299,49 @@ async def cancel_liveness(session_id: str):
         del active_sessions[session_id]
         return {"message": "Session cancelled"}
     return {"message": "Session not found"}
+
+
+@router.post("/fail/{session_id}")
+async def fail_liveness_session(
+    session_id: str,
+    payload: ForceFailRequest,
+    db=Depends(get_database)
+):
+    """Force-fail an active session (e.g., identity changed during liveness)."""
+
+    if session_id not in active_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = active_sessions[session_id]
+    transaction_id = session.transaction_id
+    tx_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id
+
+    await db.transactions.update_one(
+        {"_id": tx_obj_id},
+        {
+            "$set": {
+                "liveness_performed": True,
+                "liveness_result": {
+                    "success": False,
+                    "challenges_completed": session.detector.current_challenge_idx,
+                    "total_challenges": session.total_challenges,
+                    "timestamp": datetime.utcnow(),
+                    "reason": payload.reason or "identity_mismatch_during_liveness",
+                },
+                "status": "rejected",
+                "updated_at": datetime.utcnow(),
+            }
+        },
+    )
+
+    transaction = await db.transactions.find_one({"_id": tx_obj_id})
+    del active_sessions[session_id]
+
+    if transaction and "_id" in transaction:
+        transaction["_id"] = str(transaction["_id"])
+
+    return {
+        "success": False,
+        "message": payload.reason or "Identity mismatch detected during liveness.",
+        "transaction": transaction,
+    }

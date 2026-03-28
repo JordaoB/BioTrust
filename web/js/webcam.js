@@ -1,8 +1,12 @@
 /* ==============================================
-   BioTrust - Webcam & Liveness Handler v2.2
-   ==============================================
+    BioTrust - Webcam & Liveness Handler v2.3
+    ==============================================
 
-   Fixes in v2.2:
+    Fixes in v2.3:
+    - Continuous identity guard during liveness session
+    - Auto-reject if different person appears while webcam is open
+
+    Fixes in v2.2:
    - FPS raised from 8 to 12 (more reliable blink detection over cloud latency)
    - Explicit queue guard: skip frame if previous request still in-flight
      (prevents frame pile-up at 12fps when server is slow)
@@ -30,6 +34,9 @@ let currentTransactionId = null;
 let isStartingLiveness = false;
 let activeSessionId = null;
 let activeRunId = 0;
+
+const IDENTITY_CHECK_INTERVAL_MS = 2000;
+const MAX_IDENTITY_MISMATCHES = 2;
 
 async function runFaceCompareInsideLiveness(userId) {
     const statusResponse = await fetch(`/api/face-id/status/${userId}`);
@@ -79,6 +86,20 @@ async function runFaceCompareInsideLiveness(userId) {
     }
 
     return verifyData;
+}
+
+async function forceFailLivenessSession(sessionId, reason) {
+    const response = await fetch(`/api/liveness-stream/fail/${sessionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data.detail || `Error ${response.status} force-failing liveness session`);
+    }
+    return data;
 }
 
 /* ==============================================
@@ -246,7 +267,7 @@ async function startLivenessVerification(transactionId, userId) {
         );
         updateProgress(0);
 
-        startFrameStream(sessionId, activeRunId);
+        startFrameStream(sessionId, activeRunId, userId);
 
     } catch (error) {
         console.error('[Liveness] Startup error:', error);
@@ -262,7 +283,7 @@ async function startLivenessVerification(transactionId, userId) {
     }
 }
 
-function startFrameStream(sessionId, runId) {
+function startFrameStream(sessionId, runId, userId) {
     if (captureInterval) {
         clearInterval(captureInterval);
         captureInterval = null;
@@ -270,6 +291,10 @@ function startFrameStream(sessionId, runId) {
 
     isCapturing = true;
     let framesSent = 0;
+    let lastIdentityCheckAt = 0;
+    let identityCheckInFlight = false;
+    let identityMismatchCount = 0;
+    let identityFailureTriggered = false;
 
     // 12 FPS — reliable for blink detection even with cloud round-trip latency.
     // A blink (~150ms) = ~1.8 frames at this rate, giving enough coverage.
@@ -303,6 +328,80 @@ function startFrameStream(sessionId, runId) {
         if (!frameBase64) {
             // Video not ready yet — skip silently
             return;
+        }
+
+        // Continuous identity guard: periodically compare live frame with stored selfie
+        // during the full liveness flow to detect person swaps.
+        if (
+            userId
+            && !identityFailureTriggered
+            && !identityCheckInFlight
+            && (Date.now() - lastIdentityCheckAt) >= IDENTITY_CHECK_INTERVAL_MS
+        ) {
+            lastIdentityCheckAt = Date.now();
+            identityCheckInFlight = true;
+
+            fetch('/api/face-id/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: userId,
+                    image_base64: frameBase64,
+                    consent_to_store: false,
+                })
+            })
+                .then(async (resp) => {
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok) {
+                        console.warn('[Identity Guard] verify error:', data.detail || resp.status);
+                        return;
+                    }
+
+                    if (data.match) {
+                        identityMismatchCount = 0;
+                        return;
+                    }
+
+                    identityMismatchCount += 1;
+                    console.warn(`[Identity Guard] mismatch ${identityMismatchCount}/${MAX_IDENTITY_MISMATCHES}`);
+
+                    if (identityMismatchCount < MAX_IDENTITY_MISMATCHES || identityFailureTriggered) {
+                        return;
+                    }
+
+                    identityFailureTriggered = true;
+                    clearInterval(captureInterval);
+                    isCapturing = false;
+                    updateChallengeUI('Identity mismatch detected', 'Different person detected. Rejecting transaction...');
+
+                    try {
+                        const failResult = await forceFailLivenessSession(
+                            sessionId,
+                            'Identity changed during liveness. Transaction rejected.'
+                        );
+
+                        activeSessionId = null;
+                        stopWebcam();
+                        hideLivenessModal();
+
+                        if (typeof window.onLivenessCompleted === 'function') {
+                            window.onLivenessCompleted(failResult);
+                        }
+                    } catch (failError) {
+                        console.error('[Identity Guard] force-fail error:', failError);
+                        stopWebcam();
+                        hideLivenessModal();
+                        if (typeof showError === 'function') {
+                            showError('Identity changed during liveness. Transaction rejected.');
+                        }
+                    }
+                })
+                .catch((err) => {
+                    console.warn('[Identity Guard] request error:', err.message);
+                })
+                .finally(() => {
+                    identityCheckInFlight = false;
+                });
         }
 
         requestInFlight = true;
@@ -340,6 +439,10 @@ function startFrameStream(sessionId, runId) {
             }
 
             const result = await response.json();
+
+            if (identityFailureTriggered) {
+                return;
+            }
 
             // Ignore late responses from stale runs/sessions.
             if (runId !== activeRunId || sessionId !== activeSessionId) {
