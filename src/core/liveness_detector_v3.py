@@ -167,6 +167,10 @@ class LivenessDetectorV3:
         self.latest_rppg_raw_bpm = None
         self.latest_rppg_ready = False
         self.latest_rppg_debug_reason = None
+        self.rppg_precheck_completed = False
+        self.rppg_bpm_stable_streak = 0
+        self.rppg_precheck_start_frame = 0
+        self.RPPG_PRECHECK_REQUIRED_STREAK = 6
 
     # ========== DETECTION METHODS ==========
 
@@ -377,6 +381,9 @@ class LivenessDetectorV3:
         self.latest_rppg_raw_bpm = None
         self.latest_rppg_ready = False
         self.latest_rppg_debug_reason = None
+        self.rppg_precheck_start_frame = self.frame_count_web
+        self.rppg_precheck_completed = False
+        self.rppg_bpm_stable_streak = 0
 
         # Generate challenge sequence
         risk_mapping = {
@@ -423,8 +430,10 @@ class LivenessDetectorV3:
         self.latest_rppg_debug_reason = rppg_result.get("debug_reason")
 
         def with_rppg(payload):
-            payload["rppg_bpm"] = self.latest_rppg_bpm
-            payload["rppg_raw_bpm"] = self.latest_rppg_raw_bpm
+            # Show BPM when signal is actually ready so users get realtime feedback,
+            # while precheck gate (blink + stability) still blocks spoof progression.
+            payload["rppg_bpm"] = self.latest_rppg_bpm if self.latest_rppg_ready else None
+            payload["rppg_raw_bpm"] = self.latest_rppg_raw_bpm if self.latest_rppg_ready else None
             payload["rppg_signal_ready"] = self.latest_rppg_ready
             payload["rppg_debug_reason"] = self.latest_rppg_debug_reason
             return payload
@@ -435,9 +444,14 @@ class LivenessDetectorV3:
         h, w, _ = frame.shape
 
         if not results.multi_face_landmarks:
+            base_progress = (
+                20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0)
+                if self.rppg_precheck_completed
+                else (self.current_challenge_idx / len(self.challenge_sequence)) * 100
+            )
             return with_rppg({
                 "status": "in_progress",
-                "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
+                "progress": base_progress,
                 "current_challenge": self._get_current_challenge_info(),
                 "feedback": "Face not detected - position yourself in front of the camera.",
                 "completed_challenges": self.current_challenge_idx
@@ -519,6 +533,46 @@ class LivenessDetectorV3:
             self.micro_movements.append(movement)
         self.prev_eye_midpoint = eye_midpoint
 
+        # Phase 1 (mandatory): acquire stable rPPG before starting active challenges.
+        if self.latest_rppg_ready and self.latest_rppg_bpm is not None:
+            self.rppg_bpm_stable_streak += 1
+        else:
+            self.rppg_bpm_stable_streak = max(0, self.rppg_bpm_stable_streak - 1)
+
+        if not self.rppg_precheck_completed:
+            required_streak = self.RPPG_PRECHECK_REQUIRED_STREAK
+            if self.rppg_bpm_stable_streak >= required_streak:
+                self.rppg_precheck_completed = True
+                self.challenge_start_frame = self.frame_count_web
+                self.challenge_armed = False
+                self.frontal_stable_counter = 0
+                return with_rppg({
+                    "status": "in_progress",
+                    "progress": 20.0,
+                    "current_challenge": self._get_current_challenge_info(),
+                    "feedback": "rPPG captured. Starting liveness challenges...",
+                    "completed_challenges": self.current_challenge_idx
+                })
+
+            precheck_progress = min(20.0, (self.rppg_bpm_stable_streak / required_streak) * 20.0)
+
+            if not self.latest_rppg_ready:
+                precheck_feedback = "A medir rPPG... mantenha o rosto centrado e estável."
+            else:
+                precheck_feedback = "BPM capturado. A iniciar desafios..."
+
+            return with_rppg({
+                "status": "in_progress",
+                "progress": precheck_progress,
+                "current_challenge": {
+                    "type": "rppg_precheck",
+                    "name": "Capture heart rate",
+                    "instruction": "Look at the camera for a few seconds while we capture BPM"
+                },
+                "feedback": precheck_feedback,
+                "completed_challenges": 0
+            })
+
         # Head pose
         is_frontal, is_left, is_right, _ = self.analyze_head_pose(nose, left_eye_center, right_eye_center)
 
@@ -555,7 +609,7 @@ class LivenessDetectorV3:
         if frames_in_challenge > challenge_info["timeout_frames"]:
             return with_rppg({
                 "status": "failed",
-                "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
+                "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
                 "current_challenge": self._get_current_challenge_info(),
                 "feedback": f"Time expired: {challenge_info['name']}",
                 "completed_challenges": self.current_challenge_idx
@@ -572,7 +626,7 @@ class LivenessDetectorV3:
                     self.must_return_neutral = False
                     return with_rppg({
                         "status": "in_progress",
-                        "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
+                        "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
                         "current_challenge": self._get_current_challenge_info(),
                         "feedback": f"Ready! {challenge_info['instruction']}",
                         "completed_challenges": self.current_challenge_idx
@@ -582,7 +636,7 @@ class LivenessDetectorV3:
 
             return with_rppg({
                 "status": "in_progress",
-                "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
+                "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
                 "current_challenge": self._get_current_challenge_info(),
                 "feedback": "Look straight at the camera...",
                 "completed_challenges": self.current_challenge_idx
@@ -680,14 +734,18 @@ class LivenessDetectorV3:
 
             return with_rppg({
                 "status": "in_progress",
-                "progress": (self.current_challenge_idx / len(self.challenge_sequence)) * 100,
+                "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
                 "current_challenge": self._get_current_challenge_info(),
                 "feedback": f"Challenge {self.current_challenge_idx}/{len(self.challenge_sequence)} completed!",
                 "completed_challenges": self.current_challenge_idx
             })
 
         # Progress within current challenge (capped at 99% until truly done)
-        base_progress = self.current_challenge_idx / len(self.challenge_sequence)
+        challenge_range_start = 20.0
+        challenge_range_size = 80.0
+        base_progress = challenge_range_start + (
+            (self.current_challenge_idx / len(self.challenge_sequence)) * challenge_range_size
+        )
         if current_challenge == "blink":
             within = self.challenge_counter / challenge_info["required_count"]
         elif current_challenge in ("smile", "eyebrows_up"):
@@ -698,7 +756,7 @@ class LivenessDetectorV3:
             within = 0.0
 
         within = min(within, 0.99)
-        progress = (base_progress + within / len(self.challenge_sequence)) * 100
+        progress = base_progress + ((within / len(self.challenge_sequence)) * challenge_range_size)
 
         return with_rppg({
             "status": "in_progress",
@@ -756,6 +814,9 @@ class LivenessDetectorV3:
         self.latest_rppg_raw_bpm = None
         self.latest_rppg_ready = False
         self.latest_rppg_debug_reason = None
+        self.rppg_precheck_completed = False
+        self.rppg_bpm_stable_streak = 0
+        self.rppg_precheck_start_frame = 0
 
         risk_mapping = {
             "low": (3, 4), "medium": (4, 5), "high": (5, 6), "critical": (6, 7)

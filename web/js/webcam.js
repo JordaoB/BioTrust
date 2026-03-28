@@ -27,6 +27,9 @@ let webcamVideo = null;
 let isCapturing = false;
 let captureInterval = null;
 let currentTransactionId = null;
+let isStartingLiveness = false;
+let activeSessionId = null;
+let activeRunId = 0;
 
 /* ==============================================
    WEBCAM INIT / STOP
@@ -139,6 +142,12 @@ function captureFrame() {
    ============================================== */
 
 async function startLivenessVerification(transactionId) {
+    if (isStartingLiveness || isCapturing) {
+        console.warn('[Liveness] Start ignored: session already starting/running');
+        return;
+    }
+
+    isStartingLiveness = true;
     currentTransactionId = transactionId;
     updateRppgTelemetry({
         rppg_bpm: null,
@@ -166,6 +175,8 @@ async function startLivenessVerification(transactionId) {
 
         const data = await response.json();
         const sessionId = data.session_id;
+        activeSessionId = sessionId;
+        activeRunId += 1;
 
         console.log('[Liveness] Session started:', sessionId);
         console.log('[Liveness] Challenges:', data.total_challenges);
@@ -177,7 +188,7 @@ async function startLivenessVerification(transactionId) {
         );
         updateProgress(0);
 
-        startFrameStream(sessionId);
+        startFrameStream(sessionId, activeRunId);
 
     } catch (error) {
         console.error('[Liveness] Startup error:', error);
@@ -188,10 +199,17 @@ async function startLivenessVerification(transactionId) {
         }
         stopWebcam();
         hideLivenessModal();
+    } finally {
+        isStartingLiveness = false;
     }
 }
 
-function startFrameStream(sessionId) {
+function startFrameStream(sessionId, runId) {
+    if (captureInterval) {
+        clearInterval(captureInterval);
+        captureInterval = null;
+    }
+
     isCapturing = true;
     let framesSent = 0;
 
@@ -207,6 +225,12 @@ function startFrameStream(sessionId) {
     console.log(`[Liveness] Frame stream starting at ${FPS}fps`);
 
     captureInterval = setInterval(async () => {
+        // Drop stale streams from previous sessions/runs.
+        if (runId !== activeRunId || sessionId !== activeSessionId) {
+            clearInterval(captureInterval);
+            return;
+        }
+
         if (!isCapturing) {
             clearInterval(captureInterval);
             return;
@@ -258,6 +282,12 @@ function startFrameStream(sessionId) {
             }
 
             const result = await response.json();
+
+            // Ignore late responses from stale runs/sessions.
+            if (runId !== activeRunId || sessionId !== activeSessionId) {
+                return;
+            }
+
             framesSent++;
 
             // Update UI — prefer instruction over name for clearer UX
@@ -318,6 +348,7 @@ async function completeLivenessVerification(sessionId, success) {
         const result = await response.json();
         console.log('[Liveness] Final result:', result);
 
+        activeSessionId = null;
         stopWebcam();
         hideLivenessModal();
 
@@ -346,6 +377,16 @@ async function completeLivenessVerification(sessionId, success) {
 function cancelLiveness() {
     console.log('[Liveness] Cancelled by user');
     isCapturing = false;
+    activeRunId += 1;
+
+    const sessionToCancel = activeSessionId;
+    activeSessionId = null;
+
+    if (sessionToCancel) {
+        fetch(`/api/liveness-stream/cancel/${sessionToCancel}`, { method: 'DELETE' })
+            .catch((error) => console.warn('[Liveness] Cancel session request failed:', error.message));
+    }
+
     updateRppgTelemetry({
         rppg_bpm: null,
     });
