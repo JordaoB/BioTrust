@@ -1,12 +1,13 @@
 /* ==============================================
-    BioTrust - Webcam & Liveness Handler v2.3
-    ==============================================
+   BioTrust - Webcam & Liveness Handler v2.4
+   ==============================================
 
-    Fixes in v2.3:
-    - Continuous identity guard during liveness session
-    - Auto-reject if different person appears while webcam is open
+   Fixes in v2.4:
+   - UI fully translated to English
+   - Continuous identity guard during liveness session
+   - Auto-reject if different person appears while webcam is open
 
-    Fixes in v2.2:
+   Fixes in v2.2:
    - FPS raised from 8 to 12 (more reliable blink detection over cloud latency)
    - Explicit queue guard: skip frame if previous request still in-flight
      (prevents frame pile-up at 12fps when server is slow)
@@ -67,8 +68,8 @@ async function startLivenessSessionWithRetry(transactionId) {
     for (let attempt = 1; attempt <= LIVENESS_START_MAX_ATTEMPTS; attempt++) {
         const isRetry = attempt > 1;
         if (isRetry) {
-            setLivenessState('warning', `A reconectar ao servidor... tentativa ${attempt}/${LIVENESS_START_MAX_ATTEMPTS}`);
-            showLivenessAlert('Ligacao instavel ao servidor. A tentar novamente...', 'warning');
+            setLivenessState('warning', `Reconnecting to server... attempt ${attempt}/${LIVENESS_START_MAX_ATTEMPTS}`);
+            showLivenessAlert('Unstable server connection. Trying again...', 'warning');
             await sleep(650 * attempt);
         }
 
@@ -307,20 +308,20 @@ async function startLivenessVerification(transactionId, userId) {
     try {
         console.log('[Liveness] Starting session for transaction:', transactionId);
         showLivenessModal();
-        setLivenessState('normal', 'A validar presenca...');
+        setLivenessState('normal', 'Validating presence...');
         hideLivenessAlert();
 
         await initWebcam();
 
         updateChallengeUI('Identity check in progress', 'Comparing live webcam with your stored master selfie...');
         updateProgress(5);
-        setLivenessState('normal', 'A confirmar identidade...');
+        setLivenessState('normal', 'Confirming identity...');
 
         await runFaceCompareInsideLiveness(userId);
 
         updateChallengeUI('Identity confirmed', 'Face match successful. Starting liveness challenges...');
         updateProgress(12);
-        setLivenessState('normal', 'Identidade confirmada');
+        setLivenessState('normal', 'Identity confirmed');
 
         const data = await startLivenessSessionWithRetry(transactionId);
         const sessionId = data.session_id;
@@ -336,15 +337,15 @@ async function startLivenessVerification(transactionId, userId) {
             'Keep your face centered in the camera...'
         );
         updateProgress(0);
-        setLivenessState('normal', 'Desafios iniciados');
+        setLivenessState('normal', 'Challenges started');
         hideLivenessAlert();
 
         startFrameStream(sessionId, activeRunId, userId);
 
     } catch (error) {
         console.error('[Liveness] Startup error:', error);
-        setLivenessState('error', 'Nao foi possivel iniciar');
-        showLivenessAlert('Falha ao iniciar desafios de liveness. Verifica a ligacao e tenta novamente.', 'error');
+        setLivenessState('error', 'Could not start');
+        showLivenessAlert('Failed to start liveness challenges. Check your connection and try again.', 'error');
         if (typeof showError === 'function') {
             showError('Error starting biometric verification: ' + error.message);
         } else {
@@ -446,8 +447,8 @@ function startFrameStream(sessionId, runId, userId) {
                     identityFailureTriggered = true;
                     clearInterval(captureInterval);
                     isCapturing = false;
-                    setLivenessState('error', 'Erro de identidade');
-                    showLivenessAlert('Pessoa diferente detetada durante a verificacao. Transacao rejeitada.', 'error');
+                    setLivenessState('error', 'Identity error');
+                    showLivenessAlert('Different person detected during verification. Transaction rejected.', 'error');
                     updateChallengeUI('Identity mismatch detected', 'Different person detected. Rejecting transaction...');
 
                     try {
@@ -537,20 +538,20 @@ function startFrameStream(sessionId, runId, userId) {
 
             const feedback = (result.feedback || '').toLowerCase();
             if (result.status === 'failed') {
-                setLivenessState('error', 'Verificacao falhou');
+                setLivenessState('error', 'Verification failed');
             } else if (feedback.includes('face not detected')) {
-                setLivenessState('warning', 'Rosto nao detetado');
+                setLivenessState('warning', 'Face not detected');
             } else {
-                setLivenessState('normal', 'Verificacao em curso');
+                setLivenessState('normal', 'Verification in progress');
             }
 
             if (feedback.includes('face lost for more than')) {
                 showLivenessAlert(
-                    `Rosto ausente por mais de ${NO_FACE_CANCEL_SECONDS}s. A transacao foi cancelada por seguranca.`,
+                    `Face missing for over ${NO_FACE_CANCEL_SECONDS}s. Transaction cancelled for security.`,
                     'error'
                 );
             } else if (feedback.includes('face not detected')) {
-                showLivenessAlert('Mantem-te em frente da camara para continuar.', 'warning');
+                showLivenessAlert('Stay in front of the camera to continue.', 'warning');
             } else {
                 hideLivenessAlert();
             }
@@ -566,7 +567,7 @@ function startFrameStream(sessionId, runId, userId) {
                 console.log('[Liveness] COMPLETED');
                 clearInterval(captureInterval);
                 isCapturing = false;
-                setLivenessState('normal', 'Verificacao concluida');
+                setLivenessState('normal', 'Verification completed');
                 await completeLivenessVerification(sessionId, true);
             } else if (result.status === 'failed') {
                 console.log('[Liveness] FAILED:', result.feedback);
@@ -574,7 +575,7 @@ function startFrameStream(sessionId, runId, userId) {
                 isCapturing = false;
 
                 if (feedback.includes('face lost for more than')) {
-                    updateChallengeUI('Ausencia de rosto detetada', `Sem rosto por mais de ${NO_FACE_CANCEL_SECONDS}s. A terminar...`);
+                    updateChallengeUI('Face absence detected', `No face for over ${NO_FACE_CANCEL_SECONDS}s. Terminating...`);
                     await new Promise((resolve) => setTimeout(resolve, 900));
                 }
 
@@ -669,7 +670,7 @@ function showLivenessModal() {
     const modal = document.getElementById('liveness-modal');
     if (modal) modal.classList.remove('hidden');
     hideLivenessAlert();
-    setLivenessState('normal', 'A preparar verificacao...');
+    setLivenessState('normal', 'Preparing verification...');
 }
 
 function hideLivenessModal() {
@@ -732,7 +733,7 @@ function updateRppgTelemetry(result) {
 
     const bpm = result?.rppg_bpm;
 
-    bpmEl.textContent = Number.isFinite(bpm) ? bpm.toFixed(1) : 'A medir...';
+    bpmEl.textContent = Number.isFinite(bpm) ? bpm.toFixed(1) : 'Measuring...';
 }
 
 function updateChallengeUI(instruction, feedback) {

@@ -10,7 +10,7 @@ Features:
 - Natural movement variance analysis
 
 Version: 2.2 (fixed: EAR threshold, CONSEC_FRAMES, anti-spoof thresholds,
-               face_pitch range, smile baseline accumulation)
+              face_pitch range, smile baseline accumulation)
 Author: BioTrust Team for TecStorm '26
 """
 
@@ -572,7 +572,7 @@ class LivenessDetectorV3:
                     "status": "in_progress",
                     "progress": 20.0,
                     "current_challenge": self._get_current_challenge_info(),
-                    "feedback": "Sinal rPPG fraco no dispositivo. A continuar com os desafios de liveness...",
+                    "feedback": "Weak rPPG signal on device. Continuing with liveness challenges...",
                     "completed_challenges": self.current_challenge_idx
                 })
 
@@ -581,9 +581,9 @@ class LivenessDetectorV3:
             precheck_progress = min(20.0, max(streak_progress, elapsed_progress))
 
             if not self.latest_rppg_ready:
-                precheck_feedback = "A medir rPPG... mantenha o rosto centrado e estável."
+                precheck_feedback = "Measuring rPPG... keep your face centered and steady."
             else:
-                precheck_feedback = "BPM capturado. A iniciar desafios..."
+                precheck_feedback = "BPM captured. Starting challenges..."
 
             return with_rppg({
                 "status": "in_progress",
@@ -591,7 +591,7 @@ class LivenessDetectorV3:
                 "current_challenge": {
                     "type": "rppg_precheck",
                     "name": "Capture heart rate",
-                    "instruction": "Olha para a camara por alguns segundos enquanto capturamos o BPM"
+                    "instruction": "Look at the camera for a few seconds while we capture your BPM"
                 },
                 "feedback": precheck_feedback,
                 "completed_challenges": 0

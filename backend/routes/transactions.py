@@ -146,14 +146,14 @@ async def create_transaction(
         if card_balance < transaction_data.amount:
             raise HTTPException(
                 status_code=400, 
-                detail=f"Saldo insuficiente. Disponível: €{card_balance:.2f}, Necessário: €{transaction_data.amount:.2f}"
+                detail=f"Insufficient balance. Available: €{card_balance:.2f}, Required: €{transaction_data.amount:.2f}"
             )
         
         # Check if transaction exceeds max per transaction
         if transaction_data.amount > max_transaction:
             raise HTTPException(
                 status_code=400,
-                detail=f"Transação excede o limite máximo de €{max_transaction:.2f} por transação"
+                detail=f"Transaction exceeds the maximum limit of €{max_transaction:.2f} per transaction"
             )
         
         # Check if transaction would exceed daily limit
@@ -161,7 +161,7 @@ async def create_transaction(
             remaining = daily_limit - daily_spent
             raise HTTPException(
                 status_code=400,
-                detail=f"Limite diário excedido. Disponível hoje: €{remaining:.2f}"
+                detail=f"Daily limit exceeded. Available today: €{remaining:.2f}"
             )
         
         # Card is active by default since we don't have is_active field in inline cards
@@ -197,14 +197,14 @@ async def create_transaction(
             )
         
         # Risk analysis using FINTECH-GRADE risk engine
-        # Buscar transações recentes (últimas 24h para velocity checks)
+        # Fetch recent transactions (last 24h for velocity checks)
         recent_cutoff = datetime.utcnow() - timedelta(hours=24)
         recent_transactions = await db.transactions.find({
             "user_id": transaction_data.user_id,
             "created_at": {"$gte": recent_cutoff}
         }).to_list(length=100)
         
-        # Construir histórico de destinatários e comerciantes
+        # Build recipient and merchant history
         recipient_history = {}
         merchant_history = {}
         for tx in recent_transactions:
@@ -223,8 +223,8 @@ async def create_transaction(
             },
             "timestamp": datetime.utcnow(),
             "transaction_type": str(transaction_data.type),
-            "recipient_email": transaction_data.recipient_email,  # Para transferências
-            "merchant_id": transaction_data.merchant_id,  # Para pagamentos
+            "recipient_email": transaction_data.recipient_email,  # For transfers
+            "merchant_id": transaction_data.merchant_id,  # For payments
             "user_profile": {
                 "average_transaction": user.get("average_transaction", 50.0),
                 "max_transaction": user.get("max_transaction", 200.0),
@@ -234,9 +234,9 @@ async def create_transaction(
                 "last_transaction_location": user.get("last_transaction_location", user["home_location"]),
                 "last_transaction_time": user.get("last_transaction_time"),
                 "account_age_days": user.get("account_age_days", 0),
-                "recent_transactions": recent_transactions,  # Para velocity checks
-                "recipient_history": recipient_history,  # Para trust scoring
-                "merchant_history": merchant_history   # Para trust scoring
+                "recent_transactions": recent_transactions,  # For velocity checks
+                "recipient_history": recipient_history,  # For trust scoring
+                "merchant_history": merchant_history   # For trust scoring
             }
         }
         
@@ -296,12 +296,12 @@ async def create_transaction(
                 # Continue without anomaly detection
         
         risk_level = RiskLevel.LOW
-        if risk_score >= 60:  # Novo threshold: 60+ = Alto Risco
+        if risk_score >= 60:  # New threshold: 60+ = High Risk
             risk_level = RiskLevel.HIGH
-        elif risk_score > 25:  # Novo threshold: 26-59 = Médio Risco
+        elif risk_score > 25:  # New threshold: 26-59 = Medium Risk
             risk_level = RiskLevel.MEDIUM
         
-        liveness_required = risk_score > 25  # Require liveness para médio/alto risco (26+)
+        liveness_required = risk_score > 25  # Require liveness for medium/high risk (26+)
         
         # Create transaction document
         transaction_dict = {
