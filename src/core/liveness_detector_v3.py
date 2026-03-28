@@ -170,7 +170,9 @@ class LivenessDetectorV3:
         self.rppg_precheck_completed = False
         self.rppg_bpm_stable_streak = 0
         self.rppg_precheck_start_frame = 0
-        self.RPPG_PRECHECK_REQUIRED_STREAK = 6
+        self.WEB_EXPECTED_FPS = 12.0
+        self.RPPG_PRECHECK_REQUIRED_STREAK = 4
+        self.RPPG_PRECHECK_MAX_WAIT_SECONDS = 12.0
 
     # ========== DETECTION METHODS ==========
 
@@ -543,6 +545,9 @@ class LivenessDetectorV3:
 
         if not self.rppg_precheck_completed:
             required_streak = self.RPPG_PRECHECK_REQUIRED_STREAK
+            precheck_elapsed_frames = max(0, self.frame_count_web - self.rppg_precheck_start_frame)
+            precheck_elapsed_seconds = precheck_elapsed_frames / max(self.WEB_EXPECTED_FPS, 1.0)
+
             if self.rppg_bpm_stable_streak >= required_streak:
                 self.rppg_precheck_completed = True
                 self.challenge_start_frame = self.frame_count_web
@@ -556,7 +561,24 @@ class LivenessDetectorV3:
                     "completed_challenges": self.current_challenge_idx
                 })
 
-            precheck_progress = min(20.0, (self.rppg_bpm_stable_streak / required_streak) * 20.0)
+            # Mobile fallback: if rPPG signal does not stabilize in time, continue with
+            # active challenges instead of blocking indefinitely on this precheck screen.
+            if precheck_elapsed_seconds >= self.RPPG_PRECHECK_MAX_WAIT_SECONDS:
+                self.rppg_precheck_completed = True
+                self.challenge_start_frame = self.frame_count_web
+                self.challenge_armed = False
+                self.frontal_stable_counter = 0
+                return with_rppg({
+                    "status": "in_progress",
+                    "progress": 20.0,
+                    "current_challenge": self._get_current_challenge_info(),
+                    "feedback": "Sinal rPPG fraco no dispositivo. A continuar com os desafios de liveness...",
+                    "completed_challenges": self.current_challenge_idx
+                })
+
+            streak_progress = (self.rppg_bpm_stable_streak / required_streak) * 20.0
+            elapsed_progress = (precheck_elapsed_seconds / self.RPPG_PRECHECK_MAX_WAIT_SECONDS) * 19.5
+            precheck_progress = min(20.0, max(streak_progress, elapsed_progress))
 
             if not self.latest_rppg_ready:
                 precheck_feedback = "A medir rPPG... mantenha o rosto centrado e estável."
@@ -569,7 +591,7 @@ class LivenessDetectorV3:
                 "current_challenge": {
                     "type": "rppg_precheck",
                     "name": "Capture heart rate",
-                    "instruction": "Look at the camera for a few seconds while we capture BPM"
+                    "instruction": "Olha para a camara por alguns segundos enquanto capturamos o BPM"
                 },
                 "feedback": precheck_feedback,
                 "completed_challenges": 0
