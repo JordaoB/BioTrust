@@ -31,6 +31,56 @@ let isStartingLiveness = false;
 let activeSessionId = null;
 let activeRunId = 0;
 
+async function runFaceCompareInsideLiveness(userId) {
+    const statusResponse = await fetch(`/api/face-id/status/${userId}`);
+    const statusData = await statusResponse.json();
+
+    if (!statusResponse.ok || !statusData.available) {
+        throw new Error(statusData.detail || 'Face identity service unavailable');
+    }
+
+    if (!statusData.enrolled) {
+        throw new Error('No master selfie found. Please enroll first.');
+    }
+
+    const storedPreview = document.getElementById('stored-selfie-preview');
+    if (storedPreview) {
+        storedPreview.src = statusData.reference_image_base64 || '';
+    }
+
+    let frameBase64 = null;
+    for (let i = 0; i < 10; i++) {
+        frameBase64 = captureFrame();
+        if (frameBase64) break;
+        await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+
+    if (!frameBase64) {
+        throw new Error('Could not capture webcam frame for face comparison');
+    }
+
+    const verifyResponse = await fetch('/api/face-id/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            user_id: userId,
+            image_base64: frameBase64,
+            consent_to_store: false,
+        })
+    });
+
+    const verifyData = await verifyResponse.json();
+    if (!verifyResponse.ok) {
+        throw new Error(verifyData.detail || 'Face comparison failed');
+    }
+
+    if (!verifyData.match) {
+        throw new Error(`Face mismatch (${verifyData.confidence?.toFixed?.(1) ?? verifyData.confidence}% confidence)`);
+    }
+
+    return verifyData;
+}
+
 /* ==============================================
    WEBCAM INIT / STOP
    ============================================== */
@@ -141,7 +191,7 @@ function captureFrame() {
    LIVENESS VERIFICATION FLOW
    ============================================== */
 
-async function startLivenessVerification(transactionId) {
+async function startLivenessVerification(transactionId, userId) {
     if (isStartingLiveness || isCapturing) {
         console.warn('[Liveness] Start ignored: session already starting/running');
         return;
@@ -158,6 +208,14 @@ async function startLivenessVerification(transactionId) {
         showLivenessModal();
 
         await initWebcam();
+
+        updateChallengeUI('Identity check in progress', 'Comparing live webcam with your stored master selfie...');
+        updateProgress(5);
+
+        await runFaceCompareInsideLiveness(userId);
+
+        updateChallengeUI('Identity confirmed', 'Face match successful. Starting liveness challenges...');
+        updateProgress(12);
 
         const response = await fetch('/api/liveness-stream/start', {
             method: 'POST',

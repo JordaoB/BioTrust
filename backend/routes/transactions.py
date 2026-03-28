@@ -80,6 +80,15 @@ async def create_transaction(
         if not user:
             logger.warning(f"⚠️ User not found: {transaction_data.user_id}")
             raise HTTPException(status_code=404, detail=f"User not found: {transaction_data.user_id}")
+
+        # Mandatory requirement: user must have a stored master selfie (enrollment done).
+        # Live comparison is performed in the liveness modal flow.
+        face_identity = user.get("face_identity", {})
+        if not face_identity.get("reference_encoding"):
+            raise HTTPException(
+                status_code=428,
+                detail="Face identity enrollment is required before creating transactions",
+            )
         
         # Get card from user's inline cards array (cards are stored in user document)
         user_cards = user.get("cards", [])
@@ -244,8 +253,7 @@ async def create_transaction(
         if ANOMALY_DETECTOR_AVAILABLE:
             try:
                 # Count recent transactions
-                one_hour_ago = datetime.utcnow()
-                one_hour_ago = one_hour_ago.replace(hour=one_hour_ago.hour-1 if one_hour_ago.hour > 0 else 23)
+                one_hour_ago = datetime.utcnow() - timedelta(hours=1)
                 
                 transactions_last_hour = await db.transactions.count_documents({
                     "user_id": transaction_data.user_id,

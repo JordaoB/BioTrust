@@ -5,6 +5,28 @@ let contacts = [];
 let userCards = [];
 let latestTransactions = [];
 let riskChart = null;
+let isSendingMoney = false;
+
+const FACE_VERIFY_TIMEOUT_MS = 45000;
+const CREATE_TX_TIMEOUT_MS = 30000;
+
+async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 30000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        const data = await response.json();
+        return { response, data };
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            throw new Error('Request timed out. Please try again.');
+        }
+        throw error;
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
 // Location mappings
 const LOCATIONS = {
@@ -547,9 +569,189 @@ function closeRiskExplainModal() {
     document.getElementById('risk-explain-modal').classList.remove('show');
 }
 
+async function getFaceIdentityStatus(userId) {
+    const { response, data } = await fetchJsonWithTimeout(
+        `${API_BASE}/api/face-id/status/${userId}`,
+        {},
+        10000
+    );
+    if (!response.ok) {
+        throw new Error(data.detail || 'Could not fetch face identity status');
+    }
+    return data;
+}
+
+function captureFaceSnapshotForIdentity() {
+    return new Promise(async (resolve, reject) => {
+        let stream = null;
+        let modal = null;
+
+        const cleanup = () => {
+            if (stream) {
+                stream.getTracks().forEach((track) => track.stop());
+            }
+            if (modal && modal.parentNode) {
+                modal.parentNode.removeChild(modal);
+            }
+        };
+
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+                audio: false
+            });
+
+            modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.82);
+                z-index: 130;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 16px;
+            `;
+
+            modal.innerHTML = `
+                <div style="background:#111827; border:1px solid #1f2937; width:min(520px,96vw); border-radius:16px; padding:16px; color:#fff;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h3 style="font-size:18px; font-weight:700;">Selfie de Verificacao</h3>
+                        <button id="face-cancel-btn" style="background:transparent; border:none; color:#9ca3af; cursor:pointer; font-size:20px;">&times;</button>
+                    </div>
+                    <p style="font-size:13px; color:#d1d5db; margin-bottom:10px;">Centralize o rosto e tire uma foto nítida.</p>
+                    <div style="position:relative; width:100%; aspect-ratio:4/3; border-radius:12px; overflow:hidden; background:#000;">
+                        <video id="face-capture-video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-top:12px;">
+                        <button id="face-take-btn" style="flex:1; background:#00A859; color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:600; cursor:pointer;">Tirar Foto</button>
+                        <button id="face-close-btn" style="background:#374151; color:#fff; border:none; border-radius:10px; padding:10px 12px; cursor:pointer;">Cancelar</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            const video = modal.querySelector('#face-capture-video');
+            video.srcObject = stream;
+            await video.play();
+
+            const cancel = () => {
+                cleanup();
+                reject(new Error('Captura de selfie cancelada'));
+            };
+
+            modal.querySelector('#face-cancel-btn').onclick = cancel;
+            modal.querySelector('#face-close-btn').onclick = cancel;
+
+            modal.querySelector('#face-take-btn').onclick = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+                const ctx = canvas.getContext('2d');
+
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                const imageBase64 = canvas.toDataURL('image/jpeg', 0.88);
+                cleanup();
+                resolve(imageBase64);
+            };
+        } catch (error) {
+            cleanup();
+            reject(error);
+        }
+    });
+}
+
+async function runFaceIdentityGate(userId) {
+    showLoading('A verificar estado de identidade facial...');
+    let status = null;
+
+    try {
+        status = await getFaceIdentityStatus(userId);
+    } finally {
+        hideLoading();
+    }
+
+    if (!status.available) {
+        throw new Error(status.detail || 'Face identity service is unavailable');
+    }
+
+    let consentToStore = false;
+    if (!status.enrolled) {
+        consentToStore = window.confirm(
+            'Antes da primeira transacao precisamos guardar uma selfie mestre na base de dados para comparacao nas proximas transacoes. Ao continuar, voce autoriza este armazenamento para seguranca e prevencao de fraude.'
+        );
+
+        if (!consentToStore) {
+            throw new Error('Nao e possivel continuar sem aceitar o termo de armazenamento da selfie mestre.');
+        }
+        const selfieBase64 = await captureFaceSnapshotForIdentity();
+
+        showLoading('A guardar selfie mestre (primeira vez pode demorar alguns segundos)...');
+        try {
+            const { response, data: result } = await fetchJsonWithTimeout(
+                `${API_BASE}/api/face-id/verify`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        image_base64: selfieBase64,
+                        consent_to_store: consentToStore
+                    })
+                },
+                FACE_VERIFY_TIMEOUT_MS
+            );
+
+            if (!response.ok) {
+                throw new Error(result.detail || 'Face enrollment failed');
+            }
+
+            if (result.mode === 'enroll') {
+                showSuccess('Selfie mestre guardada com sucesso.');
+            }
+
+            return result;
+        } finally {
+            hideLoading();
+        }
+    }
+
+    // From second transaction onward, comparison is performed in liveness modal webcam.
+    return { success: true, mode: 'enrolled' };
+}
+
+async function devResetFaceIdentity() {
+    if (!currentUser?._id) {
+        throw new Error('No active user for face reset');
+    }
+
+    const { response, data } = await fetchJsonWithTimeout(
+        `${API_BASE}/api/face-id/reset/${currentUser._id}`,
+        { method: 'POST' },
+        15000
+    );
+
+    if (!response.ok) {
+        throw new Error(data.detail || 'Could not reset face identity');
+    }
+
+    return data;
+}
+
+window.devResetFaceIdentity = devResetFaceIdentity;
+
 // Handle send money
 async function handleSendMoney(event) {
     event.preventDefault();
+
+    if (isSendingMoney) {
+        return;
+    }
+    isSendingMoney = true;
     
     const recipientEmail = document.getElementById('recipient-select').value;
     const cardIndex = parseInt(document.getElementById('card-select').value);
@@ -559,12 +761,14 @@ async function handleSendMoney(event) {
     const recipient = contacts.find(c => c.email === recipientEmail);
     if (!recipient) {
         showError('Invalid contact');
+        isSendingMoney = false;
         return;
     }
     
     // Validate card selection
     if (isNaN(cardIndex) || !userCards[cardIndex]) {
         showError('Please select a card');
+        isSendingMoney = false;
         return;
     }
     
@@ -573,6 +777,7 @@ async function handleSendMoney(event) {
     // Validate card balance
     if (selectedCard.balance < amount) {
         showError(`Insufficient balance. Available: €${selectedCard.balance.toFixed(2)}`);
+        isSendingMoney = false;
         return;
     }
     
@@ -586,27 +791,38 @@ async function handleSendMoney(event) {
             showError('Could not get real GPS location. Falling back to Home location.');
         }
     }
+
+    // Mandatory face identity gate before transaction and liveness flow
+    try {
+        await runFaceIdentityGate(currentUser._id);
+    } catch (error) {
+        showError(error.message || 'Face identity verification failed');
+        isSendingMoney = false;
+        return;
+    }
     
     // Create transaction
     showLoading('Creating transaction...');
     
     try {
-        const response = await fetch(`${API_BASE}/api/transactions/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
+        const { response, data: transaction } = await fetchJsonWithTimeout(
+            `${API_BASE}/api/transactions/`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    user_id: currentUser._id,
+                    card_index: cardIndex,  // Send card index instead of card_id
+                    amount: amount,
+                    type: 'transfer',
+                    recipient_email: recipientEmail,
+                    user_location: location
+                })
             },
-            body: JSON.stringify({
-                user_id: currentUser._id,
-                card_index: cardIndex,  // Send card index instead of card_id
-                amount: amount,
-                type: 'transfer',
-                recipient_email: recipientEmail,
-                user_location: location
-            })
-        });
-        
-        const transaction = await response.json();
+            CREATE_TX_TIMEOUT_MS
+        );
         
         if (!response.ok) {
             throw new Error(transaction.detail || 'Error creating transaction');
@@ -635,6 +851,8 @@ async function handleSendMoney(event) {
         console.error('Transaction error:', error);
         hideLoading();
         showError(error.message);
+    } finally {
+        isSendingMoney = false;
     }
 }
 
@@ -673,7 +891,7 @@ function showLivenessVerification(transaction) {
         await loadTransactions();
     };
 
-    startLivenessVerification(transaction._id);
+    startLivenessVerification(transaction._id, currentUser._id);
 }
 
 // Handle add card
@@ -846,6 +1064,8 @@ function showNotification(message, type = 'info') {
 }
 
 function showLoading(message = 'Loading...') {
+    document.querySelectorAll('#loading-modal').forEach((modal) => modal.remove());
+
     const modal = document.createElement('div');
     modal.id = 'loading-modal';
     modal.className = 'modal show';
@@ -865,11 +1085,10 @@ function showLoading(message = 'Loading...') {
 }
 
 function hideLoading() {
-    const modal = document.getElementById('loading-modal');
-    if (modal) {
+    document.querySelectorAll('#loading-modal').forEach((modal) => {
         modal.style.opacity = '0';
         setTimeout(() => modal.remove(), 200);
-    }
+    });
 }
 
 // Add CSS animation keyframes
