@@ -115,6 +115,9 @@ class LivenessDetectorV3:
         self.RPPG_SIGNAL_VARIABILITY_MIN = 0.4
         self.MIN_BPM = 45
         self.MAX_BPM = 160
+        # Additional web anti-spoofing guardrails for static photo/screen attacks.
+        self.STATIC_FACE_DIFF_MIN = 0.90
+        self.STATIC_MOVEMENT_VAR_MIN = 0.030
 
         # ========== STATE VARIABLES ==========
         self.liveness_verified = False
@@ -131,6 +134,8 @@ class LivenessDetectorV3:
         self.micro_movements = []
         self.green_values = []
         self.timestamps = []
+        self.face_diff_scores = []
+        self.prev_face_gray = None
 
         # Baseline for smile — FIX #4: accumulator list instead of overwrite
         self.baseline_mouth_width = None
@@ -161,6 +166,7 @@ class LivenessDetectorV3:
         self.latest_rppg_bpm = None
         self.latest_rppg_raw_bpm = None
         self.latest_rppg_ready = False
+        self.latest_rppg_debug_reason = None
 
     # ========== DETECTION METHODS ==========
 
@@ -268,6 +274,21 @@ class LivenessDetectorV3:
         movement_var = np.var(recent_movements)
         return movement_var > self.MOVEMENT_VARIANCE_MIN
 
+    def analyze_face_temporal_diff(self, face_roi):
+        if face_roi.size == 0:
+            return None
+
+        gray = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY) if len(face_roi.shape) == 3 else face_roi
+        gray = cv2.resize(gray, (96, 96), interpolation=cv2.INTER_AREA)
+
+        if self.prev_face_gray is None:
+            self.prev_face_gray = gray
+            return None
+
+        diff = cv2.absdiff(gray, self.prev_face_gray)
+        self.prev_face_gray = gray
+        return float(np.mean(diff))
+
     def extract_rppg_signal(self, frame, face_landmarks):
         h, w, _ = frame.shape
         forehead_points = []
@@ -348,11 +369,14 @@ class LivenessDetectorV3:
         self.micro_movements = []
         self.green_values = []
         self.timestamps = []
+        self.face_diff_scores = []
+        self.prev_face_gray = None
 
         self.rppg_detector.reset()
         self.latest_rppg_bpm = None
         self.latest_rppg_raw_bpm = None
         self.latest_rppg_ready = False
+        self.latest_rppg_debug_reason = None
 
         # Generate challenge sequence
         risk_mapping = {
@@ -396,11 +420,13 @@ class LivenessDetectorV3:
         self.latest_rppg_bpm = rppg_result.get("bpm")
         self.latest_rppg_raw_bpm = rppg_result.get("raw_bpm")
         self.latest_rppg_ready = bool(rppg_result.get("signal_ready", False))
+        self.latest_rppg_debug_reason = rppg_result.get("debug_reason")
 
         def with_rppg(payload):
             payload["rppg_bpm"] = self.latest_rppg_bpm
             payload["rppg_raw_bpm"] = self.latest_rppg_raw_bpm
             payload["rppg_signal_ready"] = self.latest_rppg_ready
+            payload["rppg_debug_reason"] = self.latest_rppg_debug_reason
             return payload
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -431,13 +457,19 @@ class LivenessDetectorV3:
             self.texture_scores.append(self.analyze_texture(face_roi))
             self.moire_scores.append(self.detect_moire_pattern(face_roi))
             self.color_variance_history.append(self.analyze_color_variance(face_roi))
+            temporal_diff = self.analyze_face_temporal_diff(face_roi)
+            if temporal_diff is not None:
+                self.face_diff_scores.append(temporal_diff)
 
-            # Early spoofing check after ~1 second of data
-            # FIX #2: thresholds relaxed (see __init__) — check uses self.* so no changes here
-            if self.frame_count_web == 30 and len(self.texture_scores) >= 10:
-                avg_texture = np.mean(self.texture_scores)
-                avg_moire = np.mean(self.moire_scores)
-                avg_color_var = np.mean(self.color_variance_history)
+            # Continuous spoofing check with rolling window (not only at frame 30).
+            # This catches attacks that appear later during the session.
+            if len(self.texture_scores) >= 10:
+                window = min(20, len(self.texture_scores))
+                avg_texture = float(np.mean(self.texture_scores[-window:]))
+                avg_moire = float(np.mean(self.moire_scores[-window:]))
+                avg_color_var = float(np.mean(self.color_variance_history[-window:]))
+                avg_face_diff = float(np.mean(self.face_diff_scores[-window:])) if self.face_diff_scores else 999.0
+                movement_var = float(np.var(self.micro_movements[-45:])) if len(self.micro_movements) >= 45 else 999.0
 
                 if avg_texture < self.TEXTURE_THRESHOLD:
                     return with_rppg({"status": "failed", "progress": 0,
@@ -455,6 +487,15 @@ class LivenessDetectorV3:
                     return with_rppg({"status": "failed", "progress": 0,
                             "feedback": "SPOOFING DETECTED: Recorded video detected",
                             "anti_spoofing_failed": True, "reason": "video_detected",
+                            "current_challenge": self._get_current_challenge_info(),
+                        "completed_challenges": 0})
+
+                # Static face heuristic: very low temporal variation + very low movement variance
+                # strongly indicates a printed photo or phone screen held in front of camera.
+                if avg_face_diff < self.STATIC_FACE_DIFF_MIN and movement_var < self.STATIC_MOVEMENT_VAR_MIN:
+                    return with_rppg({"status": "failed", "progress": 0,
+                            "feedback": "SPOOFING DETECTED: Static face pattern detected",
+                            "anti_spoofing_failed": True, "reason": "static_face_detected",
                             "current_challenge": self._get_current_challenge_info(),
                         "completed_challenges": 0})
 
@@ -707,11 +748,14 @@ class LivenessDetectorV3:
         self.micro_movements = []
         self.green_values = []
         self.timestamps = []
+        self.face_diff_scores = []
+        self.prev_face_gray = None
 
         self.rppg_detector.reset()
         self.latest_rppg_bpm = None
         self.latest_rppg_raw_bpm = None
         self.latest_rppg_ready = False
+        self.latest_rppg_debug_reason = None
 
         risk_mapping = {
             "low": (3, 4), "medium": (4, 5), "high": (5, 6), "critical": (6, 7)
@@ -746,6 +790,7 @@ class LivenessDetectorV3:
                 self.latest_rppg_bpm = rppg_result.get("bpm")
                 self.latest_rppg_raw_bpm = rppg_result.get("raw_bpm")
                 self.latest_rppg_ready = bool(rppg_result.get("signal_ready", False))
+                self.latest_rppg_debug_reason = rppg_result.get("debug_reason")
 
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 results = self.face_mesh.process(rgb)

@@ -140,6 +140,9 @@ function captureFrame() {
 
 async function startLivenessVerification(transactionId) {
     currentTransactionId = transactionId;
+    updateRppgTelemetry({
+        rppg_bpm: null,
+    });
 
     try {
         console.log('[Liveness] Starting session for transaction:', transactionId);
@@ -263,9 +266,13 @@ function startFrameStream(sessionId) {
                 || '';
             updateChallengeUI(instruction, result.feedback);
             updateProgress(result.progress);
+            updateRppgTelemetry(result);
 
             if (framesSent % 16 === 0) {
-                console.log(`[Liveness] Frame ${framesSent} | ${result.progress.toFixed(1)}% | ${result.feedback}`);
+                console.log(
+                    `[Liveness] Frame ${framesSent} | ${result.progress.toFixed(1)}% | ${result.feedback} | ` +
+                    `rPPG: bpm=${result.rppg_bpm ?? 'None'} raw=${result.rppg_raw_bpm ?? 'None'} ready=${result.rppg_signal_ready} reason=${result.rppg_debug_reason ?? 'n/a'}`
+                );
             }
 
             if (result.status === 'completed') {
@@ -339,6 +346,9 @@ async function completeLivenessVerification(sessionId, success) {
 function cancelLiveness() {
     console.log('[Liveness] Cancelled by user');
     isCapturing = false;
+    updateRppgTelemetry({
+        rppg_bpm: null,
+    });
     stopWebcam();
     hideLivenessModal();
     if (typeof showInfo === 'function') {
@@ -358,6 +368,18 @@ function showLivenessModal() {
 function hideLivenessModal() {
     const modal = document.getElementById('liveness-modal');
     if (modal) modal.classList.add('hidden');
+}
+
+function updateRppgTelemetry(result) {
+    const bpmEl = document.getElementById('rppg-bpm');
+
+    if (!bpmEl) {
+        return;
+    }
+
+    const bpm = result?.rppg_bpm;
+
+    bpmEl.textContent = Number.isFinite(bpm) ? bpm.toFixed(1) : 'A medir...';
 }
 
 function updateChallengeUI(instruction, feedback) {

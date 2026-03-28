@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from datetime import datetime
 from backend.database import get_database
+from backend.services.transaction_settlement import settle_transaction_by_id
 from bson import ObjectId
 import sys
 import os
@@ -63,6 +64,10 @@ class LivenessResponse(BaseModel):
     completed_challenges: int = 0
     feedback: str = ""
     status: str  # "in_progress", "completed", "failed", "timeout"
+    rppg_bpm: float | None = None
+    rppg_raw_bpm: float | None = None
+    rppg_signal_ready: bool = False
+    rppg_debug_reason: str | None = None
 
 
 @router.post("/start", response_model=LivenessResponse)
@@ -132,7 +137,11 @@ async def process_frame(
             # Use detector's current index which is the actual count completed
             completed_challenges=session.detector.current_challenge_idx,
             feedback="Verification completed!" if session.success else "Verification failed.",
-            status="completed" if session.success else "failed"
+            status="completed" if session.success else "failed",
+            rppg_bpm=session.detector.latest_rppg_bpm,
+            rppg_raw_bpm=session.detector.latest_rppg_raw_bpm,
+            rppg_signal_ready=session.detector.latest_rppg_ready,
+            rppg_debug_reason=session.detector.latest_rppg_debug_reason,
         )
 
     # Decode frame
@@ -172,7 +181,11 @@ async def process_frame(
             total_challenges=session.total_challenges,
             completed_challenges=session.total_challenges,
             feedback=result["feedback"],
-            status="completed"
+            status="completed",
+            rppg_bpm=result.get("rppg_bpm"),
+            rppg_raw_bpm=result.get("rppg_raw_bpm"),
+            rppg_signal_ready=bool(result.get("rppg_signal_ready", False)),
+            rppg_debug_reason=result.get("rppg_debug_reason"),
         )
 
     if result["status"] == "failed":
@@ -185,7 +198,11 @@ async def process_frame(
             total_challenges=session.total_challenges,
             completed_challenges=completed_count,
             feedback=result["feedback"],
-            status="failed"
+            status="failed",
+            rppg_bpm=result.get("rppg_bpm"),
+            rppg_raw_bpm=result.get("rppg_raw_bpm"),
+            rppg_signal_ready=bool(result.get("rppg_signal_ready", False)),
+            rppg_debug_reason=result.get("rppg_debug_reason"),
         )
 
     return LivenessResponse(
@@ -195,7 +212,11 @@ async def process_frame(
         total_challenges=session.total_challenges,
         completed_challenges=completed_count,
         feedback=result["feedback"],
-        status="in_progress"
+        status="in_progress",
+        rppg_bpm=result.get("rppg_bpm"),
+        rppg_raw_bpm=result.get("rppg_raw_bpm"),
+        rppg_signal_ready=bool(result.get("rppg_signal_ready", False)),
+        rppg_debug_reason=result.get("rppg_debug_reason"),
     )
 
 
@@ -217,11 +238,11 @@ async def complete_liveness(
     transaction_id = session.transaction_id
     completed_count = session.detector.current_challenge_idx
 
+    tx_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id
+
     update_result = await db.transactions.update_one(
         {
-            "_id": ObjectId(transaction_id)
-            if ObjectId.is_valid(transaction_id)
-            else transaction_id
+            "_id": tx_obj_id
         },
         {
             "$set": {
@@ -241,10 +262,17 @@ async def complete_liveness(
     if update_result.matched_count == 0:
         raise HTTPException(status_code=500, detail="Failed to update transaction")
 
+    settlement_result = None
+    if session.success:
+        # Ensure funds move after successful web liveness, matching low-risk flow.
+        settlement_result = await settle_transaction_by_id(
+            db=db,
+            transaction_id=tx_obj_id,
+            source="liveness_stream_complete",
+        )
+
     transaction = await db.transactions.find_one({
-        "_id": ObjectId(transaction_id)
-        if ObjectId.is_valid(transaction_id)
-        else transaction_id
+        "_id": tx_obj_id
     })
 
     del active_sessions[session_id]
@@ -255,7 +283,8 @@ async def complete_liveness(
     return {
         "success": session.success,
         "message": "Verification approved!" if session.success else "Verification failed.",
-        "transaction": transaction
+        "transaction": transaction,
+        "settlement": settlement_result,
     }
 
 

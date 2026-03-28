@@ -104,6 +104,7 @@ class RPPG_Detector:
                 "raw_bpm": None,
                 "face_detected": False,
                 "signal_ready": False,
+                "debug_reason": "invalid_frame",
             }
 
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -115,6 +116,7 @@ class RPPG_Detector:
                 "raw_bpm": None,
                 "face_detected": False,
                 "signal_ready": self._has_min_samples(),
+                "debug_reason": "face_not_detected",
             }
 
         face_landmarks = result.multi_face_landmarks[0]
@@ -126,6 +128,7 @@ class RPPG_Detector:
                 "raw_bpm": None,
                 "face_detected": True,
                 "signal_ready": self._has_min_samples(),
+                "debug_reason": "roi_signal_unavailable",
             }
 
         sample_ts = float(timestamp if timestamp is not None else time.monotonic())
@@ -137,6 +140,7 @@ class RPPG_Detector:
                 "raw_bpm": None,
                 "face_detected": True,
                 "signal_ready": False,
+                "debug_reason": "insufficient_signal_duration",
             }
 
         raw_bpm = self._estimate_bpm_fft()
@@ -146,6 +150,7 @@ class RPPG_Detector:
                 "raw_bpm": None,
                 "face_detected": True,
                 "signal_ready": True,
+                "debug_reason": "bpm_estimation_failed",
             }
 
         if self.config.bpm_min <= raw_bpm <= self.config.bpm_max:
@@ -153,11 +158,14 @@ class RPPG_Detector:
 
         stabilized_bpm = float(np.mean(self.bpm_history)) if self.bpm_history else None
 
+        debug_reason = "ok" if stabilized_bpm is not None else "raw_bpm_out_of_range"
+
         return {
             "bpm": stabilized_bpm,
             "raw_bpm": raw_bpm,
             "face_detected": True,
             "signal_ready": True,
+            "debug_reason": debug_reason,
         }
 
     def _has_min_samples(self) -> bool:

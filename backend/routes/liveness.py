@@ -112,6 +112,13 @@ async def verify_liveness(
         
         # Convert numpy types to Python native types for MongoDB
         result = convert_numpy_types(result)
+
+        # Backward-compatible field mapping: detector returns rppg_* fields.
+        # Persist as heart_rate/heart_rate_confidence expected by transaction schema.
+        resolved_heart_rate = result.get("heart_rate", result.get("rppg_bpm"))
+        resolved_confidence = result.get("heart_rate_confidence")
+        if resolved_confidence is None and result.get("rppg_signal_ready") is not None:
+            resolved_confidence = 1.0 if bool(result.get("rppg_signal_ready")) else 0.0
         
         # Update transaction
         update_data = {
@@ -120,8 +127,8 @@ async def verify_liveness(
                 "success": result["success"],
                 "message": result["message"],
                 "challenges_completed": result.get("challenges_completed", []),
-                "heart_rate": result.get("heart_rate"),
-                "heart_rate_confidence": result.get("heart_rate_confidence"),
+                "heart_rate": resolved_heart_rate,
+                "heart_rate_confidence": resolved_confidence,
                 "anti_spoofing": result.get("anti_spoofing", {}),
                 "timestamp": datetime.utcnow()
             },
@@ -175,8 +182,8 @@ async def verify_liveness(
             "transaction": updated_transaction,
             "liveness_details": {
                 "challenges_completed": result.get("challenges_completed", []),
-                "heart_rate": result.get("heart_rate"),
-                "confidence": result.get("heart_rate_confidence"),
+                "heart_rate": resolved_heart_rate,
+                "confidence": resolved_confidence,
                 "anti_spoofing": result.get("anti_spoofing", {})
             }
         }
