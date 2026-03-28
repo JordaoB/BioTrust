@@ -108,6 +108,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadCards();
     await loadContacts();
     await loadTransactions();
+    await loadFaceProfileBanner();
 });
 
 // Verify session is still valid
@@ -581,7 +582,66 @@ async function getFaceIdentityStatus(userId) {
     return data;
 }
 
-function captureFaceSnapshotForIdentity() {
+function renderFaceProfileBanner(status) {
+    const banner = document.getElementById('face-profile-banner');
+    if (!banner) {
+        return;
+    }
+
+    if (!status.available) {
+        banner.className = 'rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm';
+        banner.innerHTML = `
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <div class="font-semibold text-amber-900"><i class="fas fa-exclamation-triangle mr-2"></i>Facial Profile</div>
+                    <div class="text-amber-800 mt-1">Face identity service unavailable right now.</div>
+                </div>
+                <span class="px-3 py-1 rounded-full text-xs font-bold bg-amber-600 text-white">UNAVAILABLE</span>
+            </div>
+        `;
+        return;
+    }
+
+    if (!status.enrolled) {
+        banner.className = 'rounded-2xl border border-sky-300 bg-sky-50 p-4 text-sm';
+        banner.innerHTML = `
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <div class="font-semibold text-sky-900"><i class="fas fa-camera mr-2"></i>Facial Profile</div>
+                    <div class="text-sky-800 mt-1">No master selfie yet. On your next transfer, you'll accept the terms and capture your first photo.</div>
+                </div>
+                <span class="px-3 py-1 rounded-full text-xs font-bold bg-sky-600 text-white">PENDING</span>
+            </div>
+        `;
+        return;
+    }
+
+    banner.className = 'rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm';
+    banner.innerHTML = `
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <div class="font-semibold text-emerald-900"><i class="fas fa-user-check mr-2"></i>Facial Profile</div>
+                <div class="text-emerald-800 mt-1">Master selfie registered. Identity check is active before each transfer.</div>
+            </div>
+            <span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white">REGISTERED</span>
+        </div>
+    `;
+}
+
+async function loadFaceProfileBanner() {
+    if (!currentUser?._id) {
+        return;
+    }
+    try {
+        const status = await getFaceIdentityStatus(currentUser._id);
+        renderFaceProfileBanner(status);
+    } catch (error) {
+        console.error('Error loading face profile status:', error);
+        renderFaceProfileBanner({ available: false });
+    }
+}
+
+function captureFaceSnapshotForIdentity(isFirstEnrollment = false) {
     return new Promise(async (resolve, reject) => {
         let stream = null;
         let modal = null;
@@ -622,9 +682,15 @@ function captureFaceSnapshotForIdentity() {
                     <p style="font-size:13px; color:#d1d5db; margin-bottom:10px;">Centralize o rosto e tire uma foto nítida.</p>
                     <div style="position:relative; width:100%; aspect-ratio:4/3; border-radius:12px; overflow:hidden; background:#000;">
                         <video id="face-capture-video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
+                        <img id="face-preview-image" src="" alt="Preview" style="display:none; width:100%; height:100%; object-fit:cover; transform:scaleX(-1);" />
                     </div>
+                    <p id="face-first-photo-warning" style="display:${isFirstEnrollment ? 'none' : 'none'}; margin-top:10px; font-size:12px; color:#fbbf24;">
+                        Ao confirmar, esta selfie será definida como foto mestre e não poderá ser alterada pelo utilizador.
+                    </p>
                     <div style="display:flex; gap:8px; margin-top:12px;">
                         <button id="face-take-btn" style="flex:1; background:#00A859; color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:600; cursor:pointer;">Tirar Foto</button>
+                        <button id="face-retry-btn" style="display:none; flex:1; background:#1f2937; color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:600; cursor:pointer;">Tirar Novamente</button>
+                        <button id="face-confirm-btn" style="display:none; flex:1; background:#16a34a; color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:700; cursor:pointer;">Confirmar</button>
                         <button id="face-close-btn" style="background:#374151; color:#fff; border:none; border-radius:10px; padding:10px 12px; cursor:pointer;">Cancelar</button>
                     </div>
                 </div>
@@ -633,8 +699,15 @@ function captureFaceSnapshotForIdentity() {
             document.body.appendChild(modal);
 
             const video = modal.querySelector('#face-capture-video');
+            const preview = modal.querySelector('#face-preview-image');
+            const warning = modal.querySelector('#face-first-photo-warning');
+            const takeBtn = modal.querySelector('#face-take-btn');
+            const retryBtn = modal.querySelector('#face-retry-btn');
+            const confirmBtn = modal.querySelector('#face-confirm-btn');
             video.srcObject = stream;
             await video.play();
+
+            let selectedImageBase64 = null;
 
             const cancel = () => {
                 cleanup();
@@ -644,7 +717,7 @@ function captureFaceSnapshotForIdentity() {
             modal.querySelector('#face-cancel-btn').onclick = cancel;
             modal.querySelector('#face-close-btn').onclick = cancel;
 
-            modal.querySelector('#face-take-btn').onclick = () => {
+            takeBtn.onclick = () => {
                 const canvas = document.createElement('canvas');
                 canvas.width = video.videoWidth || 640;
                 canvas.height = video.videoHeight || 480;
@@ -654,9 +727,40 @@ function captureFaceSnapshotForIdentity() {
                 ctx.scale(-1, 1);
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                const imageBase64 = canvas.toDataURL('image/jpeg', 0.88);
+                selectedImageBase64 = canvas.toDataURL('image/jpeg', 0.88);
+
+                preview.src = selectedImageBase64;
+                preview.style.display = 'block';
+                video.style.display = 'none';
+
+                takeBtn.style.display = 'none';
+                retryBtn.style.display = 'block';
+                confirmBtn.style.display = 'block';
+
+                if (isFirstEnrollment && warning) {
+                    warning.style.display = 'block';
+                }
+            };
+
+            retryBtn.onclick = () => {
+                selectedImageBase64 = null;
+                preview.style.display = 'none';
+                video.style.display = 'block';
+                takeBtn.style.display = 'block';
+                retryBtn.style.display = 'none';
+                confirmBtn.style.display = 'none';
+                if (warning) {
+                    warning.style.display = 'none';
+                }
+            };
+
+            confirmBtn.onclick = () => {
+                if (!selectedImageBase64) {
+                    reject(new Error('Tire uma foto antes de confirmar'));
+                    return;
+                }
                 cleanup();
-                resolve(imageBase64);
+                resolve(selectedImageBase64);
             };
         } catch (error) {
             cleanup();
@@ -688,7 +792,7 @@ async function runFaceIdentityGate(userId) {
         if (!consentToStore) {
             throw new Error('Nao e possivel continuar sem aceitar o termo de armazenamento da selfie mestre.');
         }
-        const selfieBase64 = await captureFaceSnapshotForIdentity();
+        const selfieBase64 = await captureFaceSnapshotForIdentity(true);
 
         showLoading('A guardar selfie mestre (primeira vez pode demorar alguns segundos)...');
         try {
@@ -712,6 +816,7 @@ async function runFaceIdentityGate(userId) {
 
             if (result.mode === 'enroll') {
                 showSuccess('Selfie mestre guardada com sucesso.');
+                await loadFaceProfileBanner();
             }
 
             return result;
@@ -739,6 +844,7 @@ async function devResetFaceIdentity() {
         throw new Error(data.detail || 'Could not reset face identity');
     }
 
+    await loadFaceProfileBanner();
     return data;
 }
 
