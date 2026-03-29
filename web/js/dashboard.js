@@ -532,10 +532,22 @@ function getRiskAnalysisHtml(transaction) {
 }
 
 function getRppgMetricsHtml(transaction) {
-    const rppgQuality = Number(transaction.rppg_quality_score || 0).toFixed(1);
-    const rppgMovement = Number(transaction.rppg_movement_correlation || 0).toFixed(1);
-    const tier = transaction.confidence_tier || 'UNKNOWN';
-    const tierReason = transaction.tier_reason || 'No details available';
+    const rootQuality = Number(transaction.rppg_quality_score ?? NaN);
+    const rootMovement = Number(transaction.rppg_movement_correlation ?? NaN);
+    const nestedQuality = Number(transaction?.liveness_result?.rppg_quality_score ?? NaN);
+    const nestedMovement = Number(transaction?.liveness_result?.rppg_movement_correlation ?? NaN);
+
+    const qualityValue = Number.isFinite(rootQuality)
+        ? rootQuality
+        : (Number.isFinite(nestedQuality) ? nestedQuality : 0);
+    const movementValue = Number.isFinite(rootMovement)
+        ? rootMovement
+        : (Number.isFinite(nestedMovement) ? nestedMovement : 0);
+
+    const rppgQuality = qualityValue.toFixed(1);
+    const rppgMovement = movementValue.toFixed(1);
+    const tier = transaction.confidence_tier || transaction?.liveness_result?.confidence_tier || 'UNKNOWN';
+    const tierReason = transaction.tier_reason || transaction?.liveness_result?.tier_reason || 'No details available';
     
     const getTierColor = (tier) => {
         if (tier === 'TIER A') return 'bg-emerald-50 border-emerald-200 text-emerald-900';

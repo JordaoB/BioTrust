@@ -31,6 +31,29 @@ router = APIRouter()
 active_sessions = {}
 
 
+def calculate_confidence_tier(risk_score: float, rppg_quality_score: float = 0.0,
+                              rppg_movement_correlation: float = 0.5) -> tuple[str, str]:
+    """Calculate confidence tier (A/B/C) from risk score and rPPG metrics."""
+    if risk_score <= 25:
+        pre_liveness = 0.80
+    elif risk_score <= 50:
+        pre_liveness = 0.60
+    else:
+        pre_liveness = 0.40
+
+    if rppg_quality_score > 0:
+        rppg_confidence = (rppg_quality_score + rppg_movement_correlation) / 2.0
+        confidence = (0.7 * pre_liveness) + (0.3 * rppg_confidence)
+    else:
+        confidence = pre_liveness
+
+    if confidence >= 0.75:
+        return "A", "HIGH confidence (auto-approve)"
+    if confidence >= 0.55:
+        return "B", "MEDIUM confidence (2FA recommended)"
+    return "C", "LOW confidence (requires extra verification)"
+
+
 class LivenessSession:
     """Maintains state for a liveness session"""
     def __init__(self, transaction_id, risk_level="medium"):
@@ -309,6 +332,15 @@ async def complete_liveness(
     completed_count = session.detector.current_challenge_idx
 
     tx_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id
+    transaction_snapshot = await db.transactions.find_one({"_id": tx_obj_id}, {"risk_score": 1})
+    risk_score = float((transaction_snapshot or {}).get("risk_score", 50.0) or 50.0)
+    rppg_quality_score = float(session.detector.latest_rppg_quality_score or 0.0)
+    rppg_movement_correlation = float(session.detector.latest_rppg_movement_correlation or 0.5)
+    confidence_tier, tier_reason = calculate_confidence_tier(
+        risk_score,
+        rppg_quality_score,
+        rppg_movement_correlation,
+    )
 
     # Collect rPPG metrics for confidence tier calculation
     liveness_result_data = {
@@ -317,9 +349,11 @@ async def complete_liveness(
         "total_challenges": session.total_challenges,
         "timestamp": datetime.utcnow(),
         "reason": session.failure_reason,
-        "rppg_quality_score": session.detector.latest_rppg_quality_score,
-        "rppg_movement_correlation": session.detector.latest_rppg_movement_correlation,
+        "rppg_quality_score": rppg_quality_score,
+        "rppg_movement_correlation": rppg_movement_correlation,
         "rppg_metrics": session.detector.latest_rppg_quality_metrics or {},
+        "confidence_tier": confidence_tier,
+        "tier_reason": tier_reason,
     }
 
     update_result = await db.transactions.update_one(
@@ -330,6 +364,11 @@ async def complete_liveness(
             "$set": {
                 "liveness_performed": True,
                 "liveness_result": liveness_result_data,
+                "rppg_quality_score": rppg_quality_score,
+                "rppg_movement_correlation": rppg_movement_correlation,
+                "confidence_tier": confidence_tier,
+                "tier_reason": tier_reason,
+                "requires_2fa": confidence_tier == "B",
                 "status": "approved" if session.success else "rejected",
                 "updated_at": datetime.utcnow()
             }
