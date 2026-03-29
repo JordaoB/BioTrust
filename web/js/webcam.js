@@ -37,6 +37,11 @@ let activeSessionId = null;
 let activeRunId = 0;
 const RPPG_DEBUG_MODE = new URLSearchParams(window.location.search).get('rppgDebug') === '1';
 
+function isLikelyMobileDevice() {
+    return window.matchMedia('(max-width: 900px)').matches
+        || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+}
+
 const IDENTITY_CHECK_INTERVAL_MS = 2000;
 const MAX_IDENTITY_MISMATCHES = 2;
 const NO_FACE_CANCEL_SECONDS = 5;
@@ -192,22 +197,51 @@ async function initWebcam() {
     try {
         console.log('[Webcam] Requesting access...');
 
-        const constraints = {
-            video: {
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-                facingMode: 'user',
-                frameRate: { ideal: 30 }
+        const candidateConstraints = [
+            {
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: { ideal: 'user' },
+                    frameRate: { ideal: 24 }
+                },
+                audio: false
             },
-            audio: false
-        };
+            {
+                video: {
+                    facingMode: { ideal: 'user' }
+                },
+                audio: false
+            },
+            {
+                video: true,
+                audio: false
+            }
+        ];
 
-        webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
+        let lastConstraintError = null;
+        for (const constraints of candidateConstraints) {
+            try {
+                webcamStream = await navigator.mediaDevices.getUserMedia(constraints);
+                break;
+            } catch (error) {
+                lastConstraintError = error;
+                console.warn('[Webcam] Constraint set failed, trying fallback:', error.message);
+            }
+        }
+
+        if (!webcamStream) {
+            throw lastConstraintError || new Error('Unable to initialize camera stream');
+        }
 
         webcamVideo = document.getElementById('webcam');
         if (!webcamVideo) {
             throw new Error('Element #webcam not found in DOM');
         }
+
+        webcamVideo.setAttribute('playsinline', 'true');
+        webcamVideo.setAttribute('webkit-playsinline', 'true');
+        webcamVideo.muted = true;
 
         webcamVideo.srcObject = webcamStream;
 
@@ -239,6 +273,8 @@ async function initWebcam() {
             errorMessage = 'The camera is in use by another application. Close it and try again.';
         } else if (error.message.includes('#webcam')) {
             errorMessage = 'Internal error: video element not found. Refresh the page.';
+        } else if (!window.isSecureContext) {
+            errorMessage = 'Camera access requires a secure context (HTTPS). Open the app over HTTPS.';
         }
 
         if (typeof showError === 'function') showError(errorMessage);
@@ -286,8 +322,9 @@ function captureFrame() {
     // The backend (MediaPipe) expects the raw orientation.
     ctx.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
 
-    // JPEG at 75% — good balance between quality and payload size at 12fps
-    return canvas.toDataURL('image/jpeg', 0.75);
+    // Reduce payload on mobile for better uplink reliability during streaming.
+    const jpegQuality = isLikelyMobileDevice() ? 0.62 : 0.75;
+    return canvas.toDataURL('image/jpeg', jpegQuality);
 }
 
 /* ==============================================
@@ -372,9 +409,9 @@ function startFrameStream(sessionId, runId, userId) {
     let identityMismatchCount = 0;
     let identityFailureTriggered = false;
 
-    // 12 FPS — reliable for blink detection even with cloud round-trip latency.
-    // A blink (~150ms) = ~1.8 frames at this rate, giving enough coverage.
-    const FPS = 12;
+    // Mobile networks/devices are less stable; reduce FPS to avoid queue pressure.
+    // Desktop keeps 12fps for stronger blink sampling.
+    const FPS = isLikelyMobileDevice() ? 8 : 12;
     const INTERVAL_MS = 1000 / FPS;
 
     // In-flight guard: skip tick if previous request hasn't returned yet.
@@ -670,6 +707,7 @@ function cancelLiveness() {
 function showLivenessModal() {
     const modal = document.getElementById('liveness-modal');
     if (modal) modal.classList.remove('hidden');
+    document.body.classList.add('modal-open');
 
     const debugPanel = document.getElementById('rppg-debug-panel');
     const debugOverlay = document.getElementById('webcam-debug-overlay');
@@ -688,6 +726,7 @@ function showLivenessModal() {
 function hideLivenessModal() {
     const modal = document.getElementById('liveness-modal');
     if (modal) modal.classList.add('hidden');
+    document.body.classList.remove('modal-open');
 
     const debugOverlay = document.getElementById('webcam-debug-overlay');
     if (debugOverlay) {

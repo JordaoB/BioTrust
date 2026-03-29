@@ -6,9 +6,22 @@ let userCards = [];
 let latestTransactions = [];
 let riskChart = null;
 let isSendingMoney = false;
+let openModalCount = 0;
 
 const FACE_VERIFY_TIMEOUT_MS = 45000;
 const CREATE_TX_TIMEOUT_MS = 30000;
+
+function lockBodyScroll() {
+    openModalCount += 1;
+    document.body.classList.add('modal-open');
+}
+
+function unlockBodyScroll() {
+    openModalCount = Math.max(0, openModalCount - 1);
+    if (openModalCount === 0) {
+        document.body.classList.remove('modal-open');
+    }
+}
 
 async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 30000) {
     const controller = new AbortController();
@@ -737,10 +750,12 @@ function showRiskExplainModal(transaction) {
     }
 
     modal.classList.add('show');
+    lockBodyScroll();
 }
 
 function closeRiskExplainModal() {
     document.getElementById('risk-explain-modal').classList.remove('show');
+    unlockBodyScroll();
 }
 
 async function getFaceIdentityStatus(userId) {
@@ -849,22 +864,22 @@ function captureFaceSnapshotForIdentity(isFirstEnrollment = false) {
             modal.innerHTML = `
                 <div style="background:#111827; border:1px solid #1f2937; width:min(520px,96vw); border-radius:16px; padding:16px; color:#fff;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <h3 style="font-size:18px; font-weight:700;">Selfie de Verificacao</h3>
+                        <h3 style="font-size:18px; font-weight:700;">Verification Selfie</h3>
                         <button id="face-cancel-btn" style="background:transparent; border:none; color:#9ca3af; cursor:pointer; font-size:20px;">&times;</button>
                     </div>
-                    <p style="font-size:13px; color:#d1d5db; margin-bottom:10px;">Centralize o rosto e tire uma foto nítida.</p>
+                    <p style="font-size:13px; color:#d1d5db; margin-bottom:10px;">Center your face and take a clear photo.</p>
                     <div style="position:relative; width:100%; aspect-ratio:4/3; border-radius:12px; overflow:hidden; background:#000;">
                         <video id="face-capture-video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1);"></video>
                         <img id="face-preview-image" src="" alt="Preview" style="display:none; width:100%; height:100%; object-fit:cover; transform:scaleX(-1);" />
                     </div>
                     <p id="face-first-photo-warning" style="display:${isFirstEnrollment ? 'none' : 'none'}; margin-top:10px; font-size:12px; color:#fbbf24;">
-                        Ao confirmar, esta selfie será definida como foto mestre e não poderá ser alterada pelo utilizador.
+                        By confirming, this selfie will be set as the master photo and cannot be changed by the user.
                     </p>
                     <div style="display:flex; gap:8px; margin-top:12px;">
-                        <button id="face-take-btn" style="flex:1; background:#00A859; color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:600; cursor:pointer;">Tirar Foto</button>
-                        <button id="face-retry-btn" style="display:none; flex:1; background:#1f2937; color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:600; cursor:pointer;">Tirar Novamente</button>
-                        <button id="face-confirm-btn" style="display:none; flex:1; background:#16a34a; color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:700; cursor:pointer;">Confirmar</button>
-                        <button id="face-close-btn" style="background:#374151; color:#fff; border:none; border-radius:10px; padding:10px 12px; cursor:pointer;">Cancelar</button>
+                        <button id="face-take-btn" style="flex:1; background:#00A859; color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:600; cursor:pointer;">Take Photo</button>
+                        <button id="face-retry-btn" style="display:none; flex:1; background:#1f2937; color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:600; cursor:pointer;">Retake</button>
+                        <button id="face-confirm-btn" style="display:none; flex:1; background:#16a34a; color:#fff; border:none; border-radius:10px; padding:10px 12px; font-weight:700; cursor:pointer;">Confirm</button>
+                        <button id="face-close-btn" style="background:#374151; color:#fff; border:none; border-radius:10px; padding:10px 12px; cursor:pointer;">Cancel</button>
                     </div>
                 </div>
             `;
@@ -884,7 +899,7 @@ function captureFaceSnapshotForIdentity(isFirstEnrollment = false) {
 
             const cancel = () => {
                 cleanup();
-                reject(new Error('Captura de selfie cancelada'));
+                reject(new Error('Selfie capture canceled'));
             };
 
             modal.querySelector('#face-cancel-btn').onclick = cancel;
@@ -929,7 +944,7 @@ function captureFaceSnapshotForIdentity(isFirstEnrollment = false) {
 
             confirmBtn.onclick = () => {
                 if (!selectedImageBase64) {
-                    reject(new Error('Tire uma foto antes de confirmar'));
+                    reject(new Error('Take a photo before confirming'));
                     return;
                 }
                 cleanup();
@@ -943,7 +958,7 @@ function captureFaceSnapshotForIdentity(isFirstEnrollment = false) {
 }
 
 async function runFaceIdentityGate(userId) {
-    showLoading('A verificar estado de identidade facial...');
+    showLoading('Checking facial identity status...');
     let status = null;
 
     try {
@@ -959,15 +974,15 @@ async function runFaceIdentityGate(userId) {
     let consentToStore = false;
     if (!status.enrolled) {
         consentToStore = window.confirm(
-            'Antes da primeira transacao precisamos guardar uma selfie mestre na base de dados para comparacao nas proximas transacoes. Ao continuar, voce autoriza este armazenamento para seguranca e prevencao de fraude.'
+            'Before your first transaction, we need to store a master selfie in the database for comparison in future transactions. By continuing, you authorize this storage for security and fraud prevention.'
         );
 
         if (!consentToStore) {
-            throw new Error('Nao e possivel continuar sem aceitar o termo de armazenamento da selfie mestre.');
+            throw new Error('You cannot continue without accepting the master selfie storage terms.');
         }
         const selfieBase64 = await captureFaceSnapshotForIdentity(true);
 
-        showLoading('A guardar selfie mestre (primeira vez pode demorar alguns segundos)...');
+        showLoading('Saving master selfie (first time may take a few seconds)...');
         try {
             const { response, data: result } = await fetchJsonWithTimeout(
                 `${API_BASE}/api/face-id/verify`,
@@ -988,7 +1003,7 @@ async function runFaceIdentityGate(userId) {
             }
 
             if (result.mode === 'enroll') {
-                showSuccess('Selfie mestre guardada com sucesso.');
+                showSuccess('Master selfie saved successfully.');
                 await loadFaceProfileBanner();
             }
 
@@ -1155,7 +1170,7 @@ function showLivenessVerification(transaction) {
             const backendMessage = result.message || 'Could not validate liveness.';
             const normalizedMessage = backendMessage.toLowerCase();
             const displayMessage = normalizedMessage.includes('face lost for more than')
-                ? 'Rosto ausente durante mais de 5 segundos. A transacao foi cancelada por seguranca.'
+                ? 'Face missing for more than 5 seconds. The transaction was canceled for security reasons.'
                 : backendMessage;
 
             showError(`
@@ -1260,18 +1275,22 @@ async function deleteCard(cardIndex) {
 // Modal functions
 function openSendMoneyModal() {
     document.getElementById('send-money-modal').classList.add('show');
+    lockBodyScroll();
 }
 
 function closeSendMoneyModal() {
     document.getElementById('send-money-modal').classList.remove('show');
+    unlockBodyScroll();
 }
 
 function openAddCardModal() {
     document.getElementById('add-card-modal').classList.add('show');
+    lockBodyScroll();
 }
 
 function closeAddCardModal() {
     document.getElementById('add-card-modal').classList.remove('show');
+    unlockBodyScroll();
 }
 
 // Tab switching
@@ -1306,13 +1325,16 @@ function showError(message) {
 }
 
 function showNotification(message, type = 'info') {
+    const isMobile = window.matchMedia('(max-width: 640px)').matches;
     const notification = document.createElement('div');
     notification.className = 'notification fade-in';
     notification.style.cssText = `
         position: fixed;
-        top: 20px;
-        right: 20px;
-        min-width: 300px;
+        top: ${isMobile ? 'max(12px, env(safe-area-inset-top, 0px))' : '20px'};
+        right: ${isMobile ? '12px' : '20px'};
+        left: ${isMobile ? '12px' : 'auto'};
+        width: ${isMobile ? 'auto' : 'min(500px, 92vw)'};
+        min-width: ${isMobile ? '0' : '300px'};
         max-width: 500px;
         background: white;
         border-radius: 12px;
@@ -1349,7 +1371,16 @@ function showNotification(message, type = 'info') {
 }
 
 function showLoading(message = 'Loading...') {
-    document.querySelectorAll('#loading-modal').forEach((modal) => modal.remove());
+    const existing = document.getElementById('loading-modal');
+    if (existing) {
+        const messageNode = existing.querySelector('[data-loading-message]');
+        if (messageNode) {
+            messageNode.textContent = message;
+        }
+        return;
+    }
+
+    lockBodyScroll();
 
     const modal = document.createElement('div');
     modal.id = 'loading-modal';
@@ -1363,17 +1394,22 @@ function showLoading(message = 'Loading...') {
                     <path style="opacity: 0.75;" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
             </div>
-            <div style="font-size: 18px; color: #1f2937; font-weight: 500;">${message}</div>
+            <div data-loading-message style="font-size: 18px; color: #1f2937; font-weight: 500;">${message}</div>
         </div>
     `;
     document.body.appendChild(modal);
 }
 
 function hideLoading() {
-    document.querySelectorAll('#loading-modal').forEach((modal) => {
+    const loadingModals = document.querySelectorAll('#loading-modal');
+    loadingModals.forEach((modal) => {
         modal.style.opacity = '0';
         setTimeout(() => modal.remove(), 200);
     });
+
+    if (loadingModals.length > 0) {
+        unlockBodyScroll();
+    }
 }
 
 // Add CSS animation keyframes
@@ -1398,7 +1434,7 @@ if (!document.getElementById('notification-styles')) {
 }
 
 function showComingSoon() {
-    showSuccess('Funcionalidade em desenvolvimento! 🚀');
+    showSuccess('Feature in development! 🚀');
 }
 
 // Auto-format card number input
@@ -1411,6 +1447,30 @@ document.addEventListener('DOMContentLoaded', () => {
             e.target.value = formattedValue;
         });
     }
+
+    const closeByBackdrop = (event) => {
+        if (event.target.id === 'send-money-modal') {
+            closeSendMoneyModal();
+        } else if (event.target.id === 'add-card-modal') {
+            closeAddCardModal();
+        } else if (event.target.id === 'risk-explain-modal') {
+            closeRiskExplainModal();
+        }
+    };
+
+    ['send-money-modal', 'add-card-modal', 'risk-explain-modal'].forEach((id) => {
+        const modal = document.getElementById(id);
+        if (modal) {
+            modal.addEventListener('click', closeByBackdrop);
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        if (document.getElementById('send-money-modal')?.classList.contains('show')) closeSendMoneyModal();
+        if (document.getElementById('add-card-modal')?.classList.contains('show')) closeAddCardModal();
+        if (document.getElementById('risk-explain-modal')?.classList.contains('show')) closeRiskExplainModal();
+    });
 });
 
 

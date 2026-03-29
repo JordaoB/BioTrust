@@ -1,8 +1,8 @@
 ﻿<!DOCTYPE html>
-<html lang="pt">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Cards - BioTrust</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -16,7 +16,13 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: #f3f4f6;
             min-height: 100vh;
-            padding-bottom: 80px;
+            padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+            overflow-x: hidden;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        html {
+            overflow-x: hidden;
         }
         
         .header-gradient {
@@ -264,6 +270,11 @@
             padding-top: 60px; /* Space for fixed navbar */
         }
 
+        body.modal-open {
+            overflow: hidden;
+            touch-action: none;
+        }
+
         @media (max-width: 900px) {
             body {
                 padding-top: 116px;
@@ -313,6 +324,16 @@
             .modal-content {
                 border-radius: 16px 16px 0 0;
                 padding: 16px;
+                padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+            }
+
+            #card-number,
+            #card-holder,
+            #card-month,
+            #card-year,
+            #card-cvv,
+            #card-type {
+                font-size: 16px;
             }
         }
     </style>
@@ -677,10 +698,12 @@
         // Modal functions
         function openAddCardModal() {
             document.getElementById('add-card-modal').classList.add('show');
+            document.body.classList.add('modal-open');
         }
         
         function closeAddCardModal() {
             document.getElementById('add-card-modal').classList.remove('show');
+            document.body.classList.remove('modal-open');
         }
         
         // Go back

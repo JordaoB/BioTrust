@@ -31,7 +31,7 @@ let pendingTransaction = null;
  * Função chamada quando a página carrega
  */
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('🚀 BioTrust App Inicializada');
+    console.log('🚀 BioTrust App initialized');
     
     // Verifica se a API está online
     try {
@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideLoading();
     } catch (error) {
         hideLoading();
-        showError('❌ Não foi possível conectar à API. Certifique-se de que o servidor FastAPI está a correr em http://localhost:8000');
+        showError('❌ Could not connect to the API. Make sure the FastAPI server is running at http://localhost:8000');
         return;
     }
     
@@ -58,14 +58,14 @@ document.addEventListener('DOMContentLoaded', async () => {
  */
 async function loadUsers() {
     try {
-        showLoading('Carregando utilizadores...');
+        showLoading('Loading users...');
         
         const users = await getUsers();
         
         hideLoading();
         
         if (!users || users.length === 0) {
-            showError('Nenhum utilizador encontrado na base de dados.');
+            showError('No users found in the database.');
             return;
         }
         
@@ -73,7 +73,7 @@ async function loadUsers() {
         
     } catch (error) {
         hideLoading();
-        showError('Erro ao carregar utilizadores: ' + error.message);
+        showError('Error loading users: ' + error.message);
     }
 }
 
@@ -111,10 +111,10 @@ function displayUserList(users) {
  * @param {object} user - Objeto do utilizador
  */
 async function selectUser(user) {
-    console.log('👤 Utilizador selecionado:', user.name);
+    console.log('👤 Selected user:', user.name);
     
     try {
-        showLoading('Carregando dashboard...');
+        showLoading('Loading dashboard...');
         
         // Busca dados completos do utilizador
         currentUser = await getUserByEmail(user.email);
@@ -124,11 +124,11 @@ async function selectUser(user) {
         console.log('📇 Cartões encontrados:', cards);
         
         if (!cards || cards.length === 0) {
-            console.warn('⚠️ Nenhum cartão encontrado para este utilizador');
+            console.warn('⚠️ No cards found for this user');
             currentCard = null;
         } else {
             currentCard = cards.find(card => card.is_default) || cards[0];
-            console.log('💳 Cartão selecionado:', currentCard);
+            console.log('💳 Selected card:', currentCard);
         }
         
         hideLoading();
@@ -141,7 +141,7 @@ async function selectUser(user) {
         
     } catch (error) {
         hideLoading();
-        showError('Erro ao carregar utilizador: ' + error.message);
+        showError('Error loading user: ' + error.message);
     }
 }
 
@@ -177,7 +177,7 @@ function updateDashboard() {
     } else {
         // Sem cartão cadastrado
         document.getElementById('card-number').textContent = '•••• •••• •••• ••••';
-        document.getElementById('card-holder').textContent = 'SEM CARTÃO';
+        document.getElementById('card-holder').textContent = 'NO CARD';
         document.getElementById('card-expiry').textContent = '••/••';
         document.getElementById('card-brand').className = 'fas fa-credit-card text-3xl';
     }
@@ -186,7 +186,7 @@ function updateDashboard() {
     document.getElementById('account-age').textContent = `${currentUser.account_age_days} dias`;
     document.getElementById('avg-transaction').textContent = `€${currentUser.average_transaction.toFixed(2)}`;
     document.getElementById('home-location').textContent = `${currentUser.home_location.city}, ${currentUser.home_location.country}`;
-    document.getElementById('verification-status').textContent = currentUser.is_verified ? '✅ Verificado' : '❌ Não Verificado';
+    document.getElementById('verification-status').textContent = currentUser.is_verified ? '✅ Verified' : '❌ Not Verified';
 }
 
 /**
@@ -226,7 +226,7 @@ async function submitTransaction(event) {
     
     // Verificar se há cartão
     if (!currentCard) {
-        showError('Este utilizador não tem cartões cadastrados. Não é possível criar transação.');
+        showError('This user has no registered cards. Unable to create transaction.');
         return;
     }
     
@@ -235,12 +235,12 @@ async function submitTransaction(event) {
     const recipient = document.getElementById('recipient').value;
     const locationOption = document.getElementById('location').value;
     
-    console.log('💸 Criando transação:', { amount, recipient, locationOption });
-    console.log('💳 Cartão atual:', currentCard);
-    console.log('👤 Utilizador atual:', currentUser);
+    console.log('💸 Creating transaction:', { amount, recipient, locationOption });
+    console.log('💳 Current card:', currentCard);
+    console.log('👤 Current user:', currentUser);
     
     try {
-        showLoading('Analisando risco da transação...');
+        showLoading('Analyzing transaction risk...');
         
         // Calcular localização baseada na opção selecionada
         const location = calculateLocationFromOption(locationOption);
@@ -251,7 +251,7 @@ async function submitTransaction(event) {
             card_id: currentCard._id,
             amount: amount,
             type: 'transfer',  // Tipo de transação (enum)
-            description: `Transferência para ${recipient}`,
+            description: `Transfer to ${recipient}`,
             user_location: {   // API espera user_location com lat/lon
                 lat: location.lat,
                 lon: location.lon
@@ -259,14 +259,14 @@ async function submitTransaction(event) {
             merchant_id: null  // Opcional para transferências
         };
         
-        console.log('📤 Enviando transação:', transactionData);
+        console.log('📤 Sending transaction:', transactionData);
         
         // Criar transação via API
         const result = await createTransaction(transactionData);
         
         hideLoading();
         
-        console.log('✅ Transação criada:', result);
+        console.log('✅ Transaction created:', result);
         console.log('📊 Risk Score:', result.risk_score);
         console.log('🎯 Risk Level:', result.risk_level);
         console.log('🔐 Liveness Required:', result.liveness_required);
@@ -279,7 +279,7 @@ async function submitTransaction(event) {
         
     } catch (error) {
         hideLoading();
-        showError('Erro ao criar transação: ' + error.message);
+        showError('Error creating transaction: ' + error.message);
     }
 }
 
@@ -296,7 +296,7 @@ function calculateLocationFromOption(option) {
         case 'nearby':
             // 50km de distância (aproximadamente 0.5 graus)
             return {
-                city: 'Próxima',
+                city: 'Nearby',
                 country: home.country,
                 lat: home.lat + 0.5,
                 lon: home.lon + 0.5
@@ -349,19 +349,19 @@ function showTransactionResult(transaction, afterLiveness = false) {
     // Atualiza ícone e título
     if (status === 'approved') {
         iconEl.innerHTML = '<div class="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto result-icon"><i class="fas fa-check text-5xl text-green-600"></i></div>';
-        titleEl.textContent = '✅ Transação Aprovada!';
+        titleEl.textContent = '✅ Transaction Approved!';
         titleEl.className = 'text-2xl font-bold mb-2 text-green-600';
-        messageEl.textContent = 'A sua transferência foi processada com sucesso.';
+        messageEl.textContent = 'Your transfer was processed successfully.';
     } else if (status === 'pending') {
         iconEl.innerHTML = '<div class="w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mx-auto result-icon"><i class="fas fa-exclamation-triangle text-5xl text-yellow-600"></i></div>';
-        titleEl.textContent = '⚠️ Verificação Necessária';
+        titleEl.textContent = '⚠️ Verification Required';
         titleEl.className = 'text-2xl font-bold mb-2 text-yellow-600';
-        messageEl.textContent = 'Esta transação requer verificação biométrica para ser aprovada.';
+        messageEl.textContent = 'This transaction requires biometric verification to be approved.';
     } else {
         iconEl.innerHTML = '<div class="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto result-icon"><i class="fas fa-times text-5xl text-red-600"></i></div>';
-        titleEl.textContent = '❌ Transação Rejeitada';
+        titleEl.textContent = '❌ Transaction Rejected';
         titleEl.className = 'text-2xl font-bold mb-2 text-red-600';
-        messageEl.textContent = 'A transação não pôde ser processada.';
+        messageEl.textContent = 'The transaction could not be processed.';
     }
     
     // Atualiza detalhes de risco
@@ -371,7 +371,7 @@ function showTransactionResult(transaction, afterLiveness = false) {
     riskLevelEl.textContent = riskLevel.toUpperCase();
     riskLevelEl.className = `risk-badge risk-${riskLevel}`;
     
-    livenessRequiredEl.textContent = livenessRequired ? '✅ Sim' : '❌ Não';
+    livenessRequiredEl.textContent = livenessRequired ? '✅ Yes' : '❌ No';
     
     // Mostra/esconde botão de liveness
     if (livenessRequired && status === 'pending' && !afterLiveness) {
@@ -389,16 +389,16 @@ function showTransactionResult(transaction, afterLiveness = false) {
  * CHAMA O LIVENESS_DETECTOR_V3.PY DIRETAMENTE NO SERVIDOR
  */
 async function startLivenessVerification() {
-    console.log('🎥 Iniciando verificação biométrica...');
-    console.log('📋 Transação pendente:', pendingTransaction);
+    console.log('🎥 Starting biometric verification...');
+    console.log('📋 Pending transaction:', pendingTransaction);
     
     if (!pendingTransaction) {
-        showError('Nenhuma transação pendente encontrada.');
+        showError('No pending transaction found.');
         return;
     }
     
     try {
-        showLoading('⏳ Iniciando verificação biométrica...\n\n📹 Uma janela OpenCV vai abrir no seu ecrã.\n\n✋ NÃO feche o browser - aguarde!\n\n👀 Olhe para a janela OpenCV e siga as instruções lá.');
+        showLoading('⏳ Starting biometric verification...\n\n📹 An OpenCV window will open on your screen.\n\n✋ Do NOT close the browser - please wait!\n\n👀 Look at the OpenCV window and follow the instructions there.');
         
         // Chama o endpoint que executa detector.verify() no servidor
         const response = await fetch(`/api/liveness/verify/${pendingTransaction._id}`, {
@@ -410,34 +410,34 @@ async function startLivenessVerification() {
         
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || 'Falha na verificação');
+            throw new Error(error.detail || 'Verification failed');
         }
         
         const result = await response.json();
         
-        console.log('✅ Resultado da verificação:', result);
+        console.log('✅ Verification result:', result);
         
         // Atualizar transação com resultado
         if (result.transaction) {
             pendingTransaction = result.transaction;
             showTransactionResult(result.transaction, true);
         } else if (result.success) {
-            alert('✅ Verificação biométrica APROVADA!\n\nTodos os desafios completados com sucesso.');
+            alert('✅ Biometric verification APPROVED!\n\nAll challenges were completed successfully.');
             backToDashboard();
         } else {
             // Mostrar detalhes do erro
-            let errorMsg = '❌ Verificação biométrica FALHOU\n\n';
-            errorMsg += `Motivo: ${result.message}\n\n`;
+            let errorMsg = '❌ Biometric verification FAILED\n\n';
+            errorMsg += `Reason: ${result.message}\n\n`;
             if (result.liveness_details && result.liveness_details.challenges_completed) {
-                errorMsg += `Desafios completados: ${result.liveness_details.challenges_completed.length}`;
+                errorMsg += `Completed challenges: ${result.liveness_details.challenges_completed.length}`;
             }
             alert(errorMsg);
         }
         
     } catch (error) {
         hideLoading();
-        console.error('❌ Erro:', error);
-        showError('Erro na verificação biométrica: ' + error.message);
+        console.error('❌ Error:', error);
+        showError('Error during biometric verification: ' + error.message);
     }
 }
 
@@ -453,7 +453,7 @@ function backToDashboard() {
  * Mostra histórico de transações (TODO)
  */
 function showTransactionHistory() {
-    alert('📋 Funcionalidade em desenvolvimento!\n\nAqui será exibido o histórico completo de transações do utilizador.');
+    alert('📋 Feature in development!\n\nThe user\'s full transaction history will be shown here.');
 }
 
 /* ==============================================
@@ -490,7 +490,7 @@ function showSection(sectionId) {
  * Mostra overlay de loading
  * @param {string} text - Texto a exibir
  */
-function showLoading(text = 'Carregando...') {
+function showLoading(text = 'Loading...') {
     const overlay = document.getElementById('loading-overlay');
     const textEl = document.getElementById('loading-text');
     
@@ -511,7 +511,7 @@ function hideLoading() {
  * @param {string} message - Mensagem de erro
  */
 function showError(message) {
-    alert('❌ ERRO\n\n' + message);
+    alert('❌ ERROR\n\n' + message);
     console.error('❌', message);
 }
 
@@ -520,7 +520,7 @@ function showError(message) {
  * @param {string} message - Mensagem
  */
 function showInfo(message) {
-    alert('ℹ️ INFORMAÇÃO\n\n' + message);
+    alert('ℹ️ INFORMATION\n\n' + message);
     console.info('ℹ️', message);
 }
 
@@ -537,7 +537,7 @@ function showLivenessModal() {
         modal.classList.remove('hidden');
         console.log('🎥 Modal de liveness mostrado');
     } else {
-        console.error('❌ Modal de liveness não encontrado!');
+        console.error('❌ Liveness modal not found!');
     }
 }
 
@@ -548,7 +548,7 @@ function hideLivenessModal() {
     const modal = document.getElementById('liveness-modal');
     if (modal) {
         modal.classList.add('hidden');
-        console.log('🚫 Modal de liveness escondido');
+        console.log('🚫 Liveness modal hidden');
     }
 }
 
@@ -557,28 +557,28 @@ function hideLivenessModal() {
  * (Depois substituímos pela integração real)
  */
 async function simulateLivenessFlow(transactionId) {
-    console.log('🎭 Simulando fluxo de liveness para transação:', transactionId);
+    console.log('🎭 Simulating liveness flow for transaction:', transactionId);
     
     try {
         // Simula alguns passos
-        updateChallengeUI('Olhe para a câmara...', 'Processando...');
+        updateChallengeUI('Look at the camera...', 'Processing...');
         await sleep(1500);
         
-        updateChallengeUI('Vire a cabeça para a esquerda', 'Analisando...');
+        updateChallengeUI('Turn your head to the left', 'Analyzing...');
         updateProgress(33);
         await sleep(1500);
         
-        updateChallengeUI('Vire a cabeça para a direita', 'Analisando...');
+        updateChallengeUI('Turn your head to the right', 'Analyzing...');
         updateProgress(66);
         await sleep(1500);
         
-        updateChallengeUI('Sorria!', 'Finalizando...');
+        updateChallengeUI('Smile!', 'Finalizing...');
         updateProgress(100);
         await sleep(1500);
         
         // Simula sucesso
         const result = await simulateLiveness(true);
-        console.log('✅ Liveness simulado com sucesso:', result);
+        console.log('✅ Liveness simulated successfully:', result);
         
         hideLoading();
         hideLivenessModal();
@@ -590,8 +590,8 @@ async function simulateLivenessFlow(transactionId) {
         showTransactionResult(pendingTransaction, true);
         
     } catch (error) {
-        console.error('❌ Erro na simulação:', error);
-        showError('Erro na verificação: ' + error.message);
+        console.error('❌ Simulation error:', error);
+        showError('Verification error: ' + error.message);
         hideLivenessModal();
     }
 }
