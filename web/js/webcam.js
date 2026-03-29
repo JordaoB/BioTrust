@@ -35,6 +35,7 @@ let currentTransactionId = null;
 let isStartingLiveness = false;
 let activeSessionId = null;
 let activeRunId = 0;
+let lastRppgBpm = null;
 const RPPG_DEBUG_MODE = new URLSearchParams(window.location.search).get('rppgDebug') === '1';
 
 function isLikelyMobileDevice() {
@@ -364,6 +365,7 @@ async function startLivenessVerification(transactionId, userId) {
 
     isStartingLiveness = true;
     currentTransactionId = transactionId;
+    lastRppgBpm = null;
     updateRppgTelemetry({
         rppg_bpm: null,
     });
@@ -725,6 +727,7 @@ function cancelLiveness() {
             .catch((error) => console.warn('[Liveness] Cancel session request failed:', error.message));
     }
 
+    lastRppgBpm = null;
     updateRppgTelemetry({
         rppg_bpm: null,
     });
@@ -890,8 +893,20 @@ function updateRppgTelemetry(result) {
     }
 
     const bpm = result?.rppg_bpm;
+    const challengeType = String(result?.current_challenge?.type || '').toLowerCase();
+    const inRppgPrecheck = challengeType === 'rppg_precheck';
 
-    bpmEl.textContent = Number.isFinite(bpm) ? bpm.toFixed(1) : 'Measuring...';
+    if (Number.isFinite(bpm)) {
+        lastRppgBpm = bpm;
+    }
+
+    if (Number.isFinite(bpm)) {
+        bpmEl.textContent = bpm.toFixed(1);
+    } else if (!inRppgPrecheck && Number.isFinite(lastRppgBpm)) {
+        bpmEl.textContent = lastRppgBpm.toFixed(1);
+    } else {
+        bpmEl.textContent = 'Measuring...';
+    }
 
     updateRppgDebugPanel(result);
     drawRppgDebugOverlay(result);

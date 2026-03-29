@@ -518,12 +518,26 @@ class LivenessDetectorV3:
         dx_norm = abs(face_cx - (w / 2.0)) / float(max(1.0, w / 2.0))
         dy_norm = abs(face_cy - (h / 2.0)) / float(max(1.0, h / 2.0))
 
-        if dx_norm > self.FACE_CENTER_TOLERANCE_X or dy_norm > self.FACE_CENTER_TOLERANCE_Y:
+        current_challenge_key = None
+        if self.rppg_precheck_completed and self.current_challenge_idx < len(self.challenge_sequence):
+            current_challenge_key = self.challenge_sequence[self.current_challenge_idx]
+
+        # During active head-turn execution, allow wider face center drift.
+        # Otherwise the turn itself can be blocked by strict centering checks.
+        is_turn_challenge_active = (
+            current_challenge_key in ("turn_left", "turn_right")
+            and self.challenge_armed
+            and not self.must_return_neutral
+        )
+        center_tolerance_x = self.FACE_CENTER_TOLERANCE_X * (1.75 if is_turn_challenge_active else 1.0)
+        center_tolerance_y = self.FACE_CENTER_TOLERANCE_Y * (1.35 if is_turn_challenge_active else 1.0)
+
+        if dx_norm > center_tolerance_x or dy_norm > center_tolerance_y:
             return with_rppg({
                 "status": "in_progress",
                 "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
                 "current_challenge": self._get_current_challenge_info(),
-                "feedback": "Centralize o rosto na camera para continuar.",
+                "feedback": "Center your face in the camera to continue.",
                 "completed_challenges": self.current_challenge_idx
             })
 
@@ -532,7 +546,7 @@ class LivenessDetectorV3:
                 "status": "in_progress",
                 "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
                 "current_challenge": self._get_current_challenge_info(),
-                "feedback": "Voce esta muito longe da camera. Aproxime-se um pouco e mantenha o rosto centrado.",
+                "feedback": "You are too far from the camera. Move a bit closer and keep your face centered.",
                 "completed_challenges": self.current_challenge_idx
             })
 
@@ -541,7 +555,7 @@ class LivenessDetectorV3:
                 "status": "in_progress",
                 "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
                 "current_challenge": self._get_current_challenge_info(),
-                "feedback": "Nao se aproxime da camera. Afaste-se um pouco e mantenha distancia estavel.",
+                "feedback": "Do not move too close to the camera. Step back slightly and keep a stable distance.",
                 "completed_challenges": self.current_challenge_idx
             })
 
@@ -767,7 +781,7 @@ class LivenessDetectorV3:
                 "status": "in_progress",
                 "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
                 "current_challenge": self._get_current_challenge_info(),
-                "feedback": "Distancia variou muito. Volte ao centro e mantenha a distancia para continuar.",
+                "feedback": "Distance changed too much. Return to center and keep a stable distance to continue.",
                 "completed_challenges": self.current_challenge_idx
             })
 
