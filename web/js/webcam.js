@@ -333,7 +333,7 @@ function captureFrame() {
         return null;
     }
 
-    const maxWidth = isLikelyMobileDevice() ? 480 : 640;
+    const maxWidth = isLikelyMobileDevice() ? 540 : 640;
     const sourceWidth = webcamVideo.videoWidth;
     const sourceHeight = webcamVideo.videoHeight;
     const scale = sourceWidth > maxWidth ? (maxWidth / sourceWidth) : 1;
@@ -349,7 +349,7 @@ function captureFrame() {
     ctx.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
 
     // Keep enough color detail for rPPG while still reducing payload on mobile.
-    const jpegQuality = isLikelyMobileDevice() ? 0.70 : 0.75;
+    const jpegQuality = isLikelyMobileDevice() ? 0.76 : 0.75;
     return canvas.toDataURL('image/jpeg', jpegQuality);
 }
 

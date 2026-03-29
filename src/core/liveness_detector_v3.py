@@ -137,6 +137,7 @@ class LivenessDetectorV3:
         self.neutral_hold_counter = 0
         self.stable_scale_buffer = []
         self.challenge_face_scale_ref = None
+        self.turn_symmetry_baseline = None
 
         # Anti-spoofing data
         self.texture_scores = []
@@ -392,6 +393,7 @@ class LivenessDetectorV3:
         self.neutral_hold_counter = 0
         self.stable_scale_buffer = []
         self.challenge_face_scale_ref = None
+        self.turn_symmetry_baseline = None
         self.baseline_mouth_width = None
         self.baseline_frames_collected = 0
         self._baseline_accumulator = []   # FIX #4: reset accumulator on new session
@@ -645,7 +647,8 @@ class LivenessDetectorV3:
             self.rppg_bpm_stable_streak = max(0, self.rppg_bpm_stable_streak - 1)
 
         if not self.rppg_precheck_completed:
-            required_streak = self.RPPG_PRECHECK_REQUIRED_STREAK
+            required_streak = 2 if mobile_mode else self.RPPG_PRECHECK_REQUIRED_STREAK
+            precheck_max_wait_seconds = 8.0 if mobile_mode else self.RPPG_PRECHECK_MAX_WAIT_SECONDS
             precheck_elapsed_frames = max(0, self.frame_count_web - self.rppg_precheck_start_frame)
             precheck_elapsed_seconds = precheck_elapsed_frames / max(self.WEB_EXPECTED_FPS, 1.0)
 
@@ -662,9 +665,22 @@ class LivenessDetectorV3:
                     "completed_challenges": self.current_challenge_idx
                 })
 
+            if mobile_mode and self.latest_rppg_ready and precheck_elapsed_seconds >= 3.0:
+                self.rppg_precheck_completed = True
+                self.challenge_start_frame = self.frame_count_web
+                self.challenge_armed = False
+                self.frontal_stable_counter = 0
+                return with_rppg({
+                    "status": "in_progress",
+                    "progress": 20.0,
+                    "current_challenge": self._get_current_challenge_info(),
+                    "feedback": "rPPG signal acquired. Starting liveness challenges...",
+                    "completed_challenges": self.current_challenge_idx
+                })
+
             # Mobile fallback: if rPPG signal does not stabilize in time, continue with
             # active challenges instead of blocking indefinitely on this precheck screen.
-            if precheck_elapsed_seconds >= self.RPPG_PRECHECK_MAX_WAIT_SECONDS:
+            if precheck_elapsed_seconds >= precheck_max_wait_seconds:
                 self.rppg_precheck_completed = True
                 self.challenge_start_frame = self.frame_count_web
                 self.challenge_armed = False
@@ -678,7 +694,7 @@ class LivenessDetectorV3:
                 })
 
             streak_progress = (self.rppg_bpm_stable_streak / required_streak) * 20.0
-            elapsed_progress = (precheck_elapsed_seconds / self.RPPG_PRECHECK_MAX_WAIT_SECONDS) * 19.5
+            elapsed_progress = (precheck_elapsed_seconds / precheck_max_wait_seconds) * 19.5
             precheck_progress = min(20.0, max(streak_progress, elapsed_progress))
 
             if not self.latest_rppg_ready:
@@ -732,6 +748,13 @@ class LivenessDetectorV3:
         current_challenge = self.challenge_sequence[self.current_challenge_idx]
         challenge_info = self.CHALLENGE_TYPES[current_challenge]
 
+        # Keep a per-user frontal baseline for turn detection on mobile.
+        if current_challenge in ("turn_left", "turn_right") and face_frontal:
+            if self.turn_symmetry_baseline is None:
+                self.turn_symmetry_baseline = float(symmetry_ratio)
+            else:
+                self.turn_symmetry_baseline = float((0.85 * self.turn_symmetry_baseline) + (0.15 * symmetry_ratio))
+
         # Timeout check
         frames_in_challenge = self.frame_count_web - self.challenge_start_frame
         if frames_in_challenge > challenge_info["timeout_frames"]:
@@ -759,6 +782,8 @@ class LivenessDetectorV3:
                     self.neutral_hold_counter = 0
                     window = self.stable_scale_buffer[-challenge_arm_frames:]
                     self.challenge_face_scale_ref = float(np.median(window)) if window else float(current_face_scale)
+                    if current_challenge in ("turn_left", "turn_right"):
+                        self.turn_symmetry_baseline = float(symmetry_ratio)
                     return with_rppg({
                         "status": "in_progress",
                         "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
@@ -833,8 +858,11 @@ class LivenessDetectorV3:
             # FIX: browser CSS mirrors the preview (scaleX(-1)) but sends raw frame.
             # When the user turns to THEIR left, MediaPipe sees the head turn RIGHT
             # in the raw frame — so we must detect is_right here.
+            turn_baseline = self.turn_symmetry_baseline if self.turn_symmetry_baseline is not None else 1.0
+            turn_delta = 0.08 if mobile_mode else 0.13
+            center_band = 0.12 if mobile_mode else 0.10
             if not self.must_return_neutral:
-                right_turn_detected = is_right or (mobile_mode and symmetry_ratio < 0.88)
+                right_turn_detected = is_right or (symmetry_ratio < (turn_baseline - turn_delta))
                 if right_turn_detected:
                     self.turn_hold_counter += 1
                     if self.turn_hold_counter >= turn_hold_frames:
@@ -844,7 +872,8 @@ class LivenessDetectorV3:
                 else:
                     self.turn_hold_counter = max(0, self.turn_hold_counter - 1)
             else:
-                if face_frontal:
+                neutral_pose = abs(symmetry_ratio - turn_baseline) <= center_band
+                if neutral_pose or face_frontal:
                     self.neutral_hold_counter += 1
                     if self.neutral_hold_counter >= neutral_return_hold_frames:
                         challenge_satisfied = True
@@ -854,8 +883,11 @@ class LivenessDetectorV3:
 
         elif current_challenge == "turn_right":
             # FIX: same mirror logic — user turning RIGHT appears as LEFT in raw frame.
+            turn_baseline = self.turn_symmetry_baseline if self.turn_symmetry_baseline is not None else 1.0
+            turn_delta = 0.08 if mobile_mode else 0.13
+            center_band = 0.12 if mobile_mode else 0.10
             if not self.must_return_neutral:
-                left_turn_detected = is_left or (mobile_mode and symmetry_ratio > 1.10)
+                left_turn_detected = is_left or (symmetry_ratio > (turn_baseline + turn_delta))
                 if left_turn_detected:
                     self.turn_hold_counter += 1
                     if self.turn_hold_counter >= turn_hold_frames:
@@ -865,7 +897,8 @@ class LivenessDetectorV3:
                 else:
                     self.turn_hold_counter = max(0, self.turn_hold_counter - 1)
             else:
-                if face_frontal:
+                neutral_pose = abs(symmetry_ratio - turn_baseline) <= center_band
+                if neutral_pose or face_frontal:
                     self.neutral_hold_counter += 1
                     if self.neutral_hold_counter >= neutral_return_hold_frames:
                         challenge_satisfied = True
@@ -896,6 +929,7 @@ class LivenessDetectorV3:
             self.turn_hold_counter = 0
             self.neutral_hold_counter = 0
             self.challenge_face_scale_ref = None
+            self.turn_symmetry_baseline = None
 
             if self.current_challenge_idx >= len(self.challenge_sequence):
                 return with_rppg({
