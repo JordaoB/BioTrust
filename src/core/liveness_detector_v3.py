@@ -94,13 +94,20 @@ class LivenessDetectorV3:
         # FIX #1: EAR raised 0.18→0.22 (more permissive for compressed webcam streams)
         self.EAR_THRESHOLD = 0.22
         self.SMILE_MOUTH_WIDTH_RATIO = 1.25
-        self.EYEBROW_DISTANCE_THRESHOLD = 35
+        self.EYEBROW_EYE_RATIO_THRESHOLD = 0.36
         self.HEAD_TURN_RATIO_LEFT = 1.15
         self.HEAD_TURN_RATIO_RIGHT = 0.80
         self.HEAD_FRONTAL_RANGE = (0.85, 1.15)
         # FIX #1: CONSEC_FRAMES 2→1 (at 12fps over network, 2 consecutive is too strict)
         self.CONSEC_FRAMES = 1
         self.CHALLENGE_ARM_FRAMES = 12
+        self.MIN_FACE_FRAME_RATIO = 0.08
+        self.MAX_FACE_FRAME_RATIO = 0.52
+        self.FACE_CENTER_TOLERANCE_X = 0.20
+        self.FACE_CENTER_TOLERANCE_Y = 0.24
+        self.SCALE_DRIFT_TOLERANCE = 0.22
+        self.TURN_HOLD_FRAMES = 6
+        self.NEUTRAL_RETURN_HOLD_FRAMES = 5
 
         # ========== ANTI-SPOOFING THRESHOLDS ==========
         # FIX #2: All thresholds relaxed for H.264/MJPEG compressed laptop webcams
@@ -126,6 +133,10 @@ class LivenessDetectorV3:
         self.mouth_open_armed = False
         self.challenge_armed = False
         self.frontal_stable_counter = 0
+        self.turn_hold_counter = 0
+        self.neutral_hold_counter = 0
+        self.stable_scale_buffer = []
+        self.challenge_face_scale_ref = None
 
         # Anti-spoofing data
         self.texture_scores = []
@@ -224,7 +235,17 @@ class LivenessDetectorV3:
         left_eye_y = np.mean([p[1] for p in left_eye])
         right_eye_y = np.mean([p[1] for p in right_eye])
         avg_distance = ((left_eye_y - left_brow_y) + (right_eye_y - right_brow_y)) / 2
-        return avg_distance > self.EYEBROW_DISTANCE_THRESHOLD
+        interocular = np.linalg.norm(np.mean(left_eye, axis=0) - np.mean(right_eye, axis=0)) + 1e-6
+        normalized_distance = avg_distance / interocular
+        return normalized_distance > self.EYEBROW_EYE_RATIO_THRESHOLD
+
+    def is_face_scale_stable(self, current_face_scale):
+        if self.challenge_face_scale_ref is None:
+            return True
+        if current_face_scale <= 0:
+            return False
+        drift = abs(current_face_scale - self.challenge_face_scale_ref) / (self.challenge_face_scale_ref + 1e-6)
+        return drift <= self.SCALE_DRIFT_TOLERANCE
 
     def analyze_head_pose(self, nose, left_eye_center, right_eye_center):
         dist_left = np.linalg.norm(nose - left_eye_center)
@@ -363,6 +384,10 @@ class LivenessDetectorV3:
         self.must_return_neutral = False
         self.challenge_armed = False
         self.frontal_stable_counter = 0
+        self.turn_hold_counter = 0
+        self.neutral_hold_counter = 0
+        self.stable_scale_buffer = []
+        self.challenge_face_scale_ref = None
         self.baseline_mouth_width = None
         self.baseline_frames_collected = 0
         self._baseline_accumulator = []   # FIX #4: reset accumulator on new session
@@ -469,6 +494,40 @@ class LivenessDetectorV3:
         y_coords = landmarks[:, 1]
         x_min, x_max = max(0, int(min(x_coords))), min(w, int(max(x_coords)))
         y_min, y_max = max(0, int(min(y_coords))), min(h, int(max(y_coords)))
+        face_w = max(1, x_max - x_min)
+        face_h = max(1, y_max - y_min)
+        face_frame_ratio = (face_w * face_h) / float(max(1, w * h))
+        face_cx = (x_min + x_max) / 2.0
+        face_cy = (y_min + y_max) / 2.0
+        dx_norm = abs(face_cx - (w / 2.0)) / float(max(1.0, w / 2.0))
+        dy_norm = abs(face_cy - (h / 2.0)) / float(max(1.0, h / 2.0))
+
+        if dx_norm > self.FACE_CENTER_TOLERANCE_X or dy_norm > self.FACE_CENTER_TOLERANCE_Y:
+            return with_rppg({
+                "status": "in_progress",
+                "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
+                "current_challenge": self._get_current_challenge_info(),
+                "feedback": "Centralize o rosto na camera para continuar.",
+                "completed_challenges": self.current_challenge_idx
+            })
+
+        if face_frame_ratio < self.MIN_FACE_FRAME_RATIO:
+            return with_rppg({
+                "status": "in_progress",
+                "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
+                "current_challenge": self._get_current_challenge_info(),
+                "feedback": "Voce esta muito longe da camera. Aproxime-se um pouco e mantenha o rosto centrado.",
+                "completed_challenges": self.current_challenge_idx
+            })
+
+        if face_frame_ratio > self.MAX_FACE_FRAME_RATIO:
+            return with_rppg({
+                "status": "in_progress",
+                "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
+                "current_challenge": self._get_current_challenge_info(),
+                "feedback": "Nao se aproxime da camera. Afaste-se um pouco e mantenha distancia estavel.",
+                "completed_challenges": self.current_challenge_idx
+            })
 
         if x_max > x_min and y_max > y_min and self.frame_count_web % 3 == 0:
             face_roi = frame[y_min:y_max, x_min:x_max]
@@ -522,6 +581,7 @@ class LivenessDetectorV3:
         right_eye = landmarks[self.RIGHT_EYE]
         left_eye_center = np.mean(left_eye, axis=0)
         right_eye_center = np.mean(right_eye, axis=0)
+        current_face_scale = np.linalg.norm(left_eye_center - right_eye_center)
         eye_midpoint = (left_eye_center + right_eye_center) / 2
 
         nose = landmarks[1]
@@ -643,11 +703,18 @@ class LivenessDetectorV3:
         if not self.challenge_armed:
             if face_frontal and movement_ok:
                 self.frontal_stable_counter += 1
+                self.stable_scale_buffer.append(float(current_face_scale))
+                if len(self.stable_scale_buffer) > 45:
+                    self.stable_scale_buffer = self.stable_scale_buffer[-45:]
                 if self.frontal_stable_counter >= self.CHALLENGE_ARM_FRAMES:
                     self.challenge_armed = True
                     self.challenge_counter = 0
                     self.blink_frame_counter = 0
                     self.must_return_neutral = False
+                    self.turn_hold_counter = 0
+                    self.neutral_hold_counter = 0
+                    window = self.stable_scale_buffer[-self.CHALLENGE_ARM_FRAMES:]
+                    self.challenge_face_scale_ref = float(np.median(window)) if window else float(current_face_scale)
                     return with_rppg({
                         "status": "in_progress",
                         "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
@@ -657,6 +724,7 @@ class LivenessDetectorV3:
                     })
             else:
                 self.frontal_stable_counter = max(0, self.frontal_stable_counter - 1)
+                self.stable_scale_buffer = self.stable_scale_buffer[-20:]
 
             return with_rppg({
                 "status": "in_progress",
@@ -669,6 +737,23 @@ class LivenessDetectorV3:
         # ========== CHALLENGE LOGIC ==========
         challenge_satisfied = False
         feedback = challenge_info["instruction"]
+        face_scale_stable = self.is_face_scale_stable(current_face_scale)
+
+        if not face_scale_stable:
+            self.challenge_armed = False
+            self.frontal_stable_counter = 0
+            self.challenge_counter = 0
+            self.blink_frame_counter = 0
+            self.turn_hold_counter = 0
+            self.neutral_hold_counter = 0
+            self.challenge_face_scale_ref = None
+            return with_rppg({
+                "status": "in_progress",
+                "progress": 20.0 + ((self.current_challenge_idx / len(self.challenge_sequence)) * 80.0),
+                "current_challenge": self._get_current_challenge_info(),
+                "feedback": "Distancia variou muito. Volte ao centro e mantenha a distancia para continuar.",
+                "completed_challenges": self.current_challenge_idx
+            })
 
         if current_challenge == "blink":
             # FIX #1: CONSEC_FRAMES=1 — count blink when eyes open after being closed
@@ -692,7 +777,7 @@ class LivenessDetectorV3:
         elif current_challenge == "smile":
             # Hold smile for 15 frames (~1.5s at 10fps, ~0.5s at 30fps)
             SMILE_HOLD = 15
-            if is_smiling:
+            if is_smiling and face_frontal:
                 self.challenge_counter += 1
                 if self.challenge_counter >= SMILE_HOLD:
                     challenge_satisfied = True
@@ -706,29 +791,45 @@ class LivenessDetectorV3:
             # in the raw frame — so we must detect is_right here.
             if not self.must_return_neutral:
                 if is_right:
-                    self.must_return_neutral = True
-                    feedback = "Turn detected - return to center"
+                    self.turn_hold_counter += 1
+                    if self.turn_hold_counter >= self.TURN_HOLD_FRAMES:
+                        self.must_return_neutral = True
+                        self.neutral_hold_counter = 0
+                        feedback = "Turn detected - return to center"
+                else:
+                    self.turn_hold_counter = max(0, self.turn_hold_counter - 1)
             else:
                 if face_frontal:
-                    challenge_satisfied = True
+                    self.neutral_hold_counter += 1
+                    if self.neutral_hold_counter >= self.NEUTRAL_RETURN_HOLD_FRAMES:
+                        challenge_satisfied = True
                 else:
+                    self.neutral_hold_counter = max(0, self.neutral_hold_counter - 1)
                     feedback = "Return to center..."
 
         elif current_challenge == "turn_right":
             # FIX: same mirror logic — user turning RIGHT appears as LEFT in raw frame.
             if not self.must_return_neutral:
                 if is_left:
-                    self.must_return_neutral = True
-                    feedback = "Turn detected - return to center"
+                    self.turn_hold_counter += 1
+                    if self.turn_hold_counter >= self.TURN_HOLD_FRAMES:
+                        self.must_return_neutral = True
+                        self.neutral_hold_counter = 0
+                        feedback = "Turn detected - return to center"
+                else:
+                    self.turn_hold_counter = max(0, self.turn_hold_counter - 1)
             else:
                 if face_frontal:
-                    challenge_satisfied = True
+                    self.neutral_hold_counter += 1
+                    if self.neutral_hold_counter >= self.NEUTRAL_RETURN_HOLD_FRAMES:
+                        challenge_satisfied = True
                 else:
+                    self.neutral_hold_counter = max(0, self.neutral_hold_counter - 1)
                     feedback = "Return to center..."
 
         elif current_challenge == "eyebrows_up":
             EYEBROW_HOLD = 15
-            if are_eyebrows_raised:
+            if are_eyebrows_raised and face_frontal:
                 self.challenge_counter += 1
                 if self.challenge_counter >= EYEBROW_HOLD:
                     challenge_satisfied = True
@@ -746,6 +847,9 @@ class LivenessDetectorV3:
             self.challenge_counter = 0
             self.blink_frame_counter = 0
             self.must_return_neutral = False
+            self.turn_hold_counter = 0
+            self.neutral_hold_counter = 0
+            self.challenge_face_scale_ref = None
 
             if self.current_challenge_idx >= len(self.challenge_sequence):
                 return with_rppg({
@@ -818,6 +922,10 @@ class LivenessDetectorV3:
         self.must_return_neutral = False
         self.challenge_armed = False
         self.frontal_stable_counter = 0
+        self.turn_hold_counter = 0
+        self.neutral_hold_counter = 0
+        self.stable_scale_buffer = []
+        self.challenge_face_scale_ref = None
         self.baseline_mouth_width = None
         self.baseline_frames_collected = 0
         self._baseline_accumulator = []
@@ -889,6 +997,7 @@ class LivenessDetectorV3:
                     right_eye = landmarks[self.RIGHT_EYE]
                     left_eye_center = np.mean(left_eye, axis=0)
                     right_eye_center = np.mean(right_eye, axis=0)
+                    current_face_scale = np.linalg.norm(left_eye_center - right_eye_center)
                     eye_midpoint = (left_eye_center + right_eye_center) / 2
                     nose = landmarks[1]
                     mouth_outer = landmarks[self.MOUTH_OUTER[:min(len(self.MOUTH_OUTER), len(landmarks))]]
@@ -923,12 +1032,31 @@ class LivenessDetectorV3:
                         if not self.challenge_armed:
                             if face_frontal and movement_ok:
                                 self.frontal_stable_counter += 1
+                                self.stable_scale_buffer.append(float(current_face_scale))
+                                if len(self.stable_scale_buffer) > 45:
+                                    self.stable_scale_buffer = self.stable_scale_buffer[-45:]
                                 if self.frontal_stable_counter >= self.CHALLENGE_ARM_FRAMES:
                                     self.challenge_armed = True
                                     self.challenge_counter = 0
                                     self.blink_frame_counter = 0
+                                    self.turn_hold_counter = 0
+                                    self.neutral_hold_counter = 0
+                                    window = self.stable_scale_buffer[-self.CHALLENGE_ARM_FRAMES:]
+                                    self.challenge_face_scale_ref = float(np.median(window)) if window else float(current_face_scale)
                             else:
                                 self.frontal_stable_counter = 0
+                                self.stable_scale_buffer = self.stable_scale_buffer[-20:]
+                            continue
+
+                        face_scale_stable = self.is_face_scale_stable(current_face_scale)
+                        if not face_scale_stable:
+                            self.challenge_armed = False
+                            self.frontal_stable_counter = 0
+                            self.challenge_counter = 0
+                            self.blink_frame_counter = 0
+                            self.turn_hold_counter = 0
+                            self.neutral_hold_counter = 0
+                            self.challenge_face_scale_ref = None
                             continue
 
                         challenge_satisfied = False
@@ -946,7 +1074,7 @@ class LivenessDetectorV3:
                                 challenge_satisfied = True
 
                         elif current_challenge == "smile":
-                            if is_smiling:
+                            if is_smiling and face_frontal:
                                 self.challenge_counter += 1
                                 if self.challenge_counter >= 15:
                                     challenge_satisfied = True
@@ -954,21 +1082,39 @@ class LivenessDetectorV3:
                         elif current_challenge == "turn_left":
                             if not self.must_return_neutral:
                                 if is_left:
-                                    self.must_return_neutral = True
+                                    self.turn_hold_counter += 1
+                                    if self.turn_hold_counter >= self.TURN_HOLD_FRAMES:
+                                        self.must_return_neutral = True
+                                        self.neutral_hold_counter = 0
+                                else:
+                                    self.turn_hold_counter = max(0, self.turn_hold_counter - 1)
                             else:
                                 if face_frontal:
-                                    challenge_satisfied = True
+                                    self.neutral_hold_counter += 1
+                                    if self.neutral_hold_counter >= self.NEUTRAL_RETURN_HOLD_FRAMES:
+                                        challenge_satisfied = True
+                                else:
+                                    self.neutral_hold_counter = max(0, self.neutral_hold_counter - 1)
 
                         elif current_challenge == "turn_right":
                             if not self.must_return_neutral:
                                 if is_right:
-                                    self.must_return_neutral = True
+                                    self.turn_hold_counter += 1
+                                    if self.turn_hold_counter >= self.TURN_HOLD_FRAMES:
+                                        self.must_return_neutral = True
+                                        self.neutral_hold_counter = 0
+                                else:
+                                    self.turn_hold_counter = max(0, self.turn_hold_counter - 1)
                             else:
                                 if face_frontal:
-                                    challenge_satisfied = True
+                                    self.neutral_hold_counter += 1
+                                    if self.neutral_hold_counter >= self.NEUTRAL_RETURN_HOLD_FRAMES:
+                                        challenge_satisfied = True
+                                else:
+                                    self.neutral_hold_counter = max(0, self.neutral_hold_counter - 1)
 
                         elif current_challenge == "eyebrows_up":
-                            if are_eyebrows_raised:
+                            if are_eyebrows_raised and face_frontal:
                                 self.challenge_counter += 1
                                 if self.challenge_counter >= 15:
                                     challenge_satisfied = True
@@ -982,6 +1128,9 @@ class LivenessDetectorV3:
                             self.frontal_stable_counter = 0
                             self.challenge_start_frame = frame_count
                             self.must_return_neutral = False
+                            self.turn_hold_counter = 0
+                            self.neutral_hold_counter = 0
+                            self.challenge_face_scale_ref = None
 
                             if self.current_challenge_idx >= len(self.challenge_sequence):
                                 self.liveness_verified = True
