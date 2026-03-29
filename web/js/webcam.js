@@ -48,6 +48,7 @@ const NO_FACE_CANCEL_SECONDS = 5;
 const LIVENESS_START_RETRYABLE_STATUS = new Set([502, 503, 504]);
 const LIVENESS_START_MAX_ATTEMPTS = 3;
 const LIVENESS_START_TIMEOUT_MS = 12000;
+const LIVENESS_CAMERA_WARMUP_MS = 1200;
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -142,37 +143,47 @@ async function runFaceCompareInsideLiveness(userId) {
         storedPreview.src = statusData.reference_image_base64 || '';
     }
 
-    let frameBase64 = null;
-    for (let i = 0; i < 10; i++) {
-        frameBase64 = captureFrame();
-        if (frameBase64) break;
-        await new Promise((resolve) => setTimeout(resolve, 120));
+    const maxAttempts = isLikelyMobileDevice() ? 3 : 2;
+    let lastFailure = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        let frameBase64 = null;
+        for (let i = 0; i < 10; i++) {
+            frameBase64 = captureFrame();
+            if (frameBase64) break;
+            await new Promise((resolve) => setTimeout(resolve, 120));
+        }
+
+        if (!frameBase64) {
+            lastFailure = new Error('Could not capture webcam frame for face comparison');
+            continue;
+        }
+
+        const verifyResponse = await fetch('/api/face-id/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                image_base64: frameBase64,
+                consent_to_store: false,
+            })
+        });
+
+        const verifyData = await verifyResponse.json();
+        if (!verifyResponse.ok) {
+            lastFailure = new Error(verifyData.detail || 'Face comparison failed');
+        } else if (verifyData.match) {
+            return verifyData;
+        } else {
+            lastFailure = new Error(`Face mismatch (${verifyData.confidence?.toFixed?.(1) ?? verifyData.confidence}% confidence)`);
+        }
+
+        if (attempt < maxAttempts) {
+            await sleep(350);
+        }
     }
 
-    if (!frameBase64) {
-        throw new Error('Could not capture webcam frame for face comparison');
-    }
-
-    const verifyResponse = await fetch('/api/face-id/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            user_id: userId,
-            image_base64: frameBase64,
-            consent_to_store: false,
-        })
-    });
-
-    const verifyData = await verifyResponse.json();
-    if (!verifyResponse.ok) {
-        throw new Error(verifyData.detail || 'Face comparison failed');
-    }
-
-    if (!verifyData.match) {
-        throw new Error(`Face mismatch (${verifyData.confidence?.toFixed?.(1) ?? verifyData.confidence}% confidence)`);
-    }
-
-    return verifyData;
+    throw lastFailure || new Error('Face comparison failed');
 }
 
 async function forceFailLivenessSession(sessionId, reason) {
@@ -198,6 +209,15 @@ async function initWebcam() {
         console.log('[Webcam] Requesting access...');
 
         const candidateConstraints = [
+            {
+                video: {
+                    width: { ideal: 640 },
+                    height: { ideal: 480 },
+                    facingMode: { exact: 'user' },
+                    frameRate: { ideal: 24 }
+                },
+                audio: false
+            },
             {
                 video: {
                     width: { ideal: 640 },
@@ -312,9 +332,14 @@ function captureFrame() {
         return null;
     }
 
+    const maxWidth = isLikelyMobileDevice() ? 480 : 640;
+    const sourceWidth = webcamVideo.videoWidth;
+    const sourceHeight = webcamVideo.videoHeight;
+    const scale = sourceWidth > maxWidth ? (maxWidth / sourceWidth) : 1;
+
     const canvas = document.createElement('canvas');
-    canvas.width = webcamVideo.videoWidth;
-    canvas.height = webcamVideo.videoHeight;
+    canvas.width = Math.round(sourceWidth * scale);
+    canvas.height = Math.round(sourceHeight * scale);
 
     const ctx = canvas.getContext('2d');
 
@@ -322,8 +347,8 @@ function captureFrame() {
     // The backend (MediaPipe) expects the raw orientation.
     ctx.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
 
-    // Reduce payload on mobile for better uplink reliability during streaming.
-    const jpegQuality = isLikelyMobileDevice() ? 0.62 : 0.75;
+    // Keep enough color detail for rPPG while still reducing payload on mobile.
+    const jpegQuality = isLikelyMobileDevice() ? 0.70 : 0.75;
     return canvas.toDataURL('image/jpeg', jpegQuality);
 }
 
@@ -350,6 +375,9 @@ async function startLivenessVerification(transactionId, userId) {
         hideLivenessAlert();
 
         await initWebcam();
+
+        // Let camera exposure/auto-focus settle, important for first liveness and rPPG samples.
+        await sleep(LIVENESS_CAMERA_WARMUP_MS);
 
         updateChallengeUI('Identity check in progress', 'Comparing live webcam with your stored master selfie...');
         updateProgress(5);
@@ -404,14 +432,20 @@ function startFrameStream(sessionId, runId, userId) {
 
     isCapturing = true;
     let framesSent = 0;
-    let lastIdentityCheckAt = 0;
+    const isMobile = isLikelyMobileDevice();
+    let lastIdentityCheckAt = Date.now();
+    const streamStartedAt = Date.now();
+    const identityGuardWarmupMs = isMobile ? 5000 : 2000;
+    const identityCheckIntervalMs = isMobile ? 3500 : IDENTITY_CHECK_INTERVAL_MS;
+    const maxIdentityMismatches = isMobile ? 3 : MAX_IDENTITY_MISMATCHES;
+    const noFaceCancelSeconds = isMobile ? 8 : NO_FACE_CANCEL_SECONDS;
     let identityCheckInFlight = false;
     let identityMismatchCount = 0;
     let identityFailureTriggered = false;
 
     // Mobile networks/devices are less stable; reduce FPS to avoid queue pressure.
     // Desktop keeps 12fps for stronger blink sampling.
-    const FPS = isLikelyMobileDevice() ? 8 : 12;
+    const FPS = isMobile ? 10 : 12;
     const INTERVAL_MS = 1000 / FPS;
 
     // In-flight guard: skip tick if previous request hasn't returned yet.
@@ -449,7 +483,8 @@ function startFrameStream(sessionId, runId, userId) {
             userId
             && !identityFailureTriggered
             && !identityCheckInFlight
-            && (Date.now() - lastIdentityCheckAt) >= IDENTITY_CHECK_INTERVAL_MS
+            && (Date.now() - streamStartedAt) >= identityGuardWarmupMs
+            && (Date.now() - lastIdentityCheckAt) >= identityCheckIntervalMs
         ) {
             lastIdentityCheckAt = Date.now();
             identityCheckInFlight = true;
@@ -476,9 +511,9 @@ function startFrameStream(sessionId, runId, userId) {
                     }
 
                     identityMismatchCount += 1;
-                    console.warn(`[Identity Guard] mismatch ${identityMismatchCount}/${MAX_IDENTITY_MISMATCHES}`);
+                    console.warn(`[Identity Guard] mismatch ${identityMismatchCount}/${maxIdentityMismatches}`);
 
-                    if (identityMismatchCount < MAX_IDENTITY_MISMATCHES || identityFailureTriggered) {
+                    if (identityMismatchCount < maxIdentityMismatches || identityFailureTriggered) {
                         return;
                     }
 
@@ -585,7 +620,7 @@ function startFrameStream(sessionId, runId, userId) {
 
             if (feedback.includes('face lost for more than')) {
                 showLivenessAlert(
-                    `Face missing for over ${NO_FACE_CANCEL_SECONDS}s. Transaction cancelled for security.`,
+                    `Face missing for over ${noFaceCancelSeconds}s. Transaction cancelled for security.`,
                     'error'
                 );
             } else if (feedback.includes('face not detected')) {
@@ -613,7 +648,7 @@ function startFrameStream(sessionId, runId, userId) {
                 isCapturing = false;
 
                 if (feedback.includes('face lost for more than')) {
-                    updateChallengeUI('Face absence detected', `No face for over ${NO_FACE_CANCEL_SECONDS}s. Terminating...`);
+                    updateChallengeUI('Face absence detected', `No face for over ${noFaceCancelSeconds}s. Terminating...`);
                     await new Promise((resolve) => setTimeout(resolve, 900));
                 }
 
