@@ -42,6 +42,48 @@ def serialize_doc(doc):
     return doc
 
 
+def calculate_confidence_tier(risk_score: float, rppg_quality_score: float = 0.0, 
+                            rppg_movement_correlation: float = 0.5) -> tuple[str, str]:
+    """
+    Calculate confidence tier (A/B/C) based on risk, rPPG quality, and movement.
+    
+    TIER A (≥75%): HIGH confidence → Auto-approve (no 2FA needed)
+    TIER B (55-75%): MEDIUM confidence → Approve but flag for monitoring (2FA recommended)
+    TIER C (<55%): LOW confidence → Reject or ask for extra verification
+    
+    Returns: (tier: str, reason: str)
+    """
+    # Pre-liveness confidence (based on risk alone)
+    if risk_score <= 25:
+        pre_liveness = 0.80  # Low risk = high confidence
+    elif risk_score <= 50:
+        pre_liveness = 0.60  # Medium risk = medium confidence
+    else:
+        pre_liveness = 0.40  # High risk = low confidence
+    
+    # Post-liveness adjustment (if rPPG was done)
+    if rppg_quality_score > 0:
+        # Combine rPPG quality & movement correlation (50/50 weight)
+        rppg_confidence = (rppg_quality_score + rppg_movement_correlation) / 2.0
+        # Final score: 70% risk-based, 30% rPPG-based
+        confidence = (0.7 * pre_liveness) + (0.3 * rppg_confidence)
+    else:
+        confidence = pre_liveness
+    
+    # Determine tier
+    if confidence >= 0.75:
+        tier = "A"
+        reason = "HIGH confidence (auto-approve)"
+    elif confidence >= 0.55:
+        tier = "B"
+        reason = "MEDIUM confidence (2FA recommended)"
+    else:
+        tier = "C"
+        reason = "LOW confidence (requires extra verification)"
+    
+    return tier, reason
+
+
 def calculate_distance(loc1: dict, loc2: dict) -> float:
     """Calculate distance between two locations in km using Haversine formula"""
     from math import radians, sin, cos, sqrt, atan2
@@ -301,7 +343,9 @@ async def create_transaction(
         elif risk_score > 25:  # New threshold: 26-59 = Medium Risk
             risk_level = RiskLevel.MEDIUM
         
-        liveness_required = risk_score > 25  # Require liveness for medium/high risk (26+)
+        # Calculate confidence tier (A/B/C) for 3-tier system
+        confidence_tier, tier_reason = calculate_confidence_tier(risk_score)
+        liveness_required = risk_score > 25  # Still require liveness for medium/high risk
         
         # Create transaction document
         transaction_dict = {
@@ -324,6 +368,9 @@ async def create_transaction(
             "anomaly_detected": bool(is_anomaly),  # Convert numpy bool to Python bool
             "anomaly_score": round(float(anomaly_score), 2),  # Convert numpy float to Python float
             "anomaly_reason": anomaly_reason,
+            "confidence_tier": confidence_tier,  # A/B/C tier
+            "tier_reason": tier_reason,  # Explanation for tier
+            "requires_2fa": confidence_tier == "B",  # TIER B needs 2FA
             "liveness_required": liveness_required,
             "liveness_performed": False,
             "liveness_result": None,
@@ -485,13 +532,37 @@ async def update_transaction_liveness(
     if not transaction["liveness_required"]:
         raise HTTPException(status_code=400, detail="Liveness not required for this transaction")
     
-    # Determine final status based on liveness result
+    # Determine final status based on liveness result + rPPG metrics
     liveness_success = liveness_result.get("success", False)
     confidence = liveness_result.get("confidence", 0)
     reason = liveness_result.get("reason", "N/A")
-    new_status = TransactionStatus.APPROVED if liveness_success else TransactionStatus.REJECTED
     
-    logger.info(f"🔐 Liveness verification completed | TX: {transaction_id} | Success: {liveness_success} | Confidence: {confidence:.1f}% | Reason: {reason}")
+    # Extract rPPG metrics from liveness result
+    rppg_quality_score = liveness_result.get("rppg_quality_score", 0.0) or 0.0
+    rppg_movement_correlation = liveness_result.get("rppg_movement_correlation", 0.5) or 0.5
+    
+    # Recalculate confidence tier with rPPG data
+    original_risk = transaction.get("risk_score", 50.0)
+    new_tier, new_tier_reason = calculate_confidence_tier(
+        original_risk,
+        rppg_quality_score,
+        rppg_movement_correlation
+    )
+    
+    # Final decision:
+    # If liveness passed AND tier is A/B -> approve
+    # If liveness passed but tier is C -> require 2FA
+    # If liveness failed -> reject
+    if liveness_success and new_tier in ["A", "B"]:
+        new_status = TransactionStatus.APPROVED
+    elif liveness_success and new_tier == "C":
+        # Tier C: mark as needing 2FA instead of auto-reject
+        new_status = TransactionStatus.PENDING
+        reason += " (Tier C: 2FA required)"
+    else:
+        new_status = TransactionStatus.REJECTED
+    
+    logger.info(f"🔐 Liveness verification completed | TX: {transaction_id} | Success: {liveness_success} | Confidence: {confidence:.1f}% | Tier: {new_tier} | Reason: {reason}")
     
     # Update transaction
     await db.transactions.update_one(
@@ -500,6 +571,9 @@ async def update_transaction_liveness(
             "$set": {
                 "liveness_performed": True,
                 "liveness_result": liveness_result,
+                "confidence_tier": new_tier,
+                "tier_reason": new_tier_reason,
+                "requires_2fa": new_tier == "B",
                 "status": new_status,
                 "updated_at": datetime.utcnow()
             }

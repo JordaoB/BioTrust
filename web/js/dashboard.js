@@ -463,10 +463,7 @@ function displayTransactions(transactions) {
     });
 }
 
-function showRiskExplainModal(transaction) {
-    const modal = document.getElementById('risk-explain-modal');
-    const content = document.getElementById('risk-explain-content');
-
+function getRiskAnalysisHtml(transaction) {
     const factors = transaction.risk_factors || {};
     const factorRows = [
         { key: 'location', label: 'Location' },
@@ -508,7 +505,7 @@ function showRiskExplainModal(transaction) {
         `;
     }).join('');
 
-    content.innerHTML = `
+    return `
         <div class="mb-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
             <div class="text-sm text-gray-500 mb-1">Decision summary</div>
             <div class="text-lg font-bold text-slate-800">${reasonLine}</div>
@@ -532,9 +529,175 @@ function showRiskExplainModal(transaction) {
             TX: ${transaction._id || transaction.transaction_id || 'N/A'} • ${new Date(transaction.created_at || Date.now()).toLocaleString('en-GB')}
         </div>
     `;
+}
 
+function getRppgMetricsHtml(transaction) {
+    const rppgQuality = Number(transaction.rppg_quality_score || 0).toFixed(1);
+    const rppgMovement = Number(transaction.rppg_movement_correlation || 0).toFixed(1);
+    const tier = transaction.confidence_tier || 'UNKNOWN';
+    const tierReason = transaction.tier_reason || 'No details available';
+    
+    const getTierColor = (tier) => {
+        if (tier === 'TIER A') return 'bg-emerald-50 border-emerald-200 text-emerald-900';
+        if (tier === 'TIER B') return 'bg-amber-50 border-amber-200 text-amber-900';
+        if (tier === 'TIER C') return 'bg-red-50 border-red-200 text-red-900';
+        return 'bg-gray-50 border-gray-200 text-gray-900';
+    };
+    
+    const getTierBadgeColor = (tier) => {
+        if (tier === 'TIER A') return 'bg-emerald-500 text-white';
+        if (tier === 'TIER B') return 'bg-amber-500 text-white';
+        if (tier === 'TIER C') return 'bg-red-500 text-white';
+        return 'bg-gray-500 text-white';
+    };
+
+    return `
+        <div class="mb-4 p-4 rounded-xl ${getTierColor(tier)} border">
+            <div class="flex justify-between items-center mb-2">
+                <div class="text-sm font-semibold">Confidence Tier</div>
+                <span class="px-3 py-1 rounded-full text-sm font-bold ${getTierBadgeColor(tier)}">${tier}</span>
+            </div>
+            <p class="text-xs text-gray-700">${tierReason}</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="p-3 rounded-xl bg-blue-50 border border-blue-200">
+                <div class="text-xs text-blue-600 font-semibold mb-1">Movement Correlation</div>
+                <div class="text-2xl font-extrabold text-blue-900">${(rppgMovement * 100).toFixed(0)}%</div>
+                <div class="text-xs text-blue-700 mt-1">Genuine motion detected</div>
+            </div>
+            <div class="p-3 rounded-xl bg-teal-50 border border-teal-200">
+                <div class="text-xs text-teal-600 font-semibold mb-1">Signal Quality</div>
+                <div class="text-2xl font-extrabold text-teal-900">${(rppgQuality * 100).toFixed(0)}%</div>
+                <div class="text-xs text-teal-700 mt-1">rPPG signal clarity</div>
+            </div>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4">
+            <div class="text-xs font-semibold text-gray-700 mb-2">rPPG Metrics</div>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="flex justify-between py-1 border-b border-slate-200">
+                    <span class="text-gray-600">Movement %:</span>
+                    <span class="font-semibold text-gray-900">${(rppgMovement * 100).toFixed(1)}</span>
+                </div>
+                <div class="flex justify-between py-1 border-b border-slate-200">
+                    <span class="text-gray-600">Quality %:</span>
+                    <span class="font-semibold text-gray-900">${(rppgQuality * 100).toFixed(1)}</span>
+                </div>
+                <div class="flex justify-between py-1">
+                    <span class="text-gray-600">Tier:</span>
+                    <span class="font-semibold text-gray-900">${tier}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 text-xs text-gray-500">
+            TX: ${transaction._id || transaction.transaction_id || 'N/A'} • ${new Date(transaction.created_at || Date.now()).toLocaleString('en-GB')}
+        </div>
+    `;
+}
+
+function switchRiskTab(tabName) {
+    const riskTab = document.getElementById('risk-tab');
+    const rppgTab = document.getElementById('rppg-tab');
+    const riskContent = document.getElementById('risk-tab-content');
+    const rppgContent = document.getElementById('rppg-tab-content');
+    
+    if (tabName === 'risk') {
+        riskTab.classList.add('border-b-2', 'border-blue-600', 'text-blue-600', 'font-semibold');
+        riskTab.classList.remove('text-gray-600');
+        rppgTab.classList.remove('border-b-2', 'border-blue-600', 'text-blue-600', 'font-semibold');
+        rppgTab.classList.add('text-gray-600');
+        riskContent.classList.remove('hidden');
+        rppgContent.classList.add('hidden');
+        
+        // Render chart when tab is shown
+        setTimeout(() => {
+            const chartCanvas = document.getElementById('risk-factor-chart');
+            if (chartCanvas && typeof Chart !== 'undefined' && !riskChart) {
+                const factors = window.lastTransactionForRisk?.risk_factors || {};
+                const factorRows = [
+                    { key: 'location', label: 'Location' },
+                    { key: 'amount', label: 'Amount' },
+                    { key: 'velocity', label: 'Velocity' },
+                    { key: 'recipient', label: 'Recipient' },
+                    { key: 'time', label: 'Time' }
+                ];
+                if (riskChart) riskChart.destroy();
+                riskChart = new Chart(chartCanvas, {
+                    type: 'doughnut',
+                    data: {
+                        labels: factorRows.map(f => f.label),
+                        datasets: [{
+                            data: factorRows.map(f => Number((factors[f.key] || {}).contribution || 0)),
+                            backgroundColor: ['#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: { boxWidth: 10, font: { size: 10 } }
+                            }
+                        },
+                        cutout: '65%'
+                    }
+                });
+            }
+        }, 50);
+    } else if (tabName === 'rppg') {
+        rppgTab.classList.add('border-b-2', 'border-blue-600', 'text-blue-600', 'font-semibold');
+        rppgTab.classList.remove('text-gray-600');
+        riskTab.classList.remove('border-b-2', 'border-blue-600', 'text-blue-600', 'font-semibold');
+        riskTab.classList.add('text-gray-600');
+        rppgContent.classList.remove('hidden');
+        riskContent.classList.add('hidden');
+    }
+}
+
+function showRiskExplainModal(transaction) {
+    const modal = document.getElementById('risk-explain-modal');
+    const content = document.getElementById('risk-explain-content');
+    
+    // Store transaction for later use by chart rendering
+    window.lastTransactionForRisk = transaction;
+    
+    const riskHtml = getRiskAnalysisHtml(transaction);
+    const rppgHtml = getRppgMetricsHtml(transaction);
+
+    content.innerHTML = `
+        <!-- Tab Navigation -->
+        <div class="flex gap-4 mb-4 border-b border-gray-200">
+            <button id="risk-tab" class="px-3 py-2 border-b-2 border-blue-600 text-blue-600 font-semibold text-sm" onclick="switchRiskTab('risk')">
+                Risk Analysis
+            </button>
+            <button id="rppg-tab" class="px-3 py-2 text-gray-600 text-sm" onclick="switchRiskTab('rppg')">
+                rPPG Metrics
+            </button>
+        </div>
+
+        <!-- Tab Content -->
+        <div id="risk-tab-content" class="tab-content">
+            ${riskHtml}
+        </div>
+        <div id="rppg-tab-content" class="tab-content hidden">
+            ${rppgHtml}
+        </div>
+    `;
+
+    // Initialize chart on first tab
     const chartCanvas = document.getElementById('risk-factor-chart');
     if (chartCanvas && typeof Chart !== 'undefined') {
+        const factors = transaction.risk_factors || {};
+        const factorRows = [
+            { key: 'location', label: 'Location' },
+            { key: 'amount', label: 'Amount' },
+            { key: 'velocity', label: 'Velocity' },
+            { key: 'recipient', label: 'Recipient' },
+            { key: 'time', label: 'Time' }
+        ];
         if (riskChart) {
             riskChart.destroy();
         }
@@ -542,13 +705,11 @@ function showRiskExplainModal(transaction) {
             type: 'doughnut',
             data: {
                 labels: factorRows.map(f => f.label),
-                datasets: [
-                    {
-                        data: factorRows.map(f => Number((factors[f.key] || {}).contribution || 0)),
-                        backgroundColor: ['#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981'],
-                        borderWidth: 0
-                    }
-                ]
+                datasets: [{
+                    data: factorRows.map(f => Number((factors[f.key] || {}).contribution || 0)),
+                    backgroundColor: ['#0ea5e9', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981'],
+                    borderWidth: 0
+                }]
             },
             options: {
                 responsive: true,

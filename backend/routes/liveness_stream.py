@@ -76,7 +76,11 @@ class LivenessResponse(BaseModel):
     rppg_bpm: float | None = None
     rppg_raw_bpm: float | None = None
     rppg_signal_ready: bool = False
+    rppg_quality_score: float | None = None
+    rppg_quality_metrics: dict | None = None
+    rppg_debug_visual: dict | None = None
     rppg_debug_reason: str | None = None
+    rppg_movement_correlation: float = 0.5  # 0.0-1.0 liveness indicator from movement-rPPG correlation
 
 
 @router.post("/start", response_model=LivenessResponse)
@@ -157,7 +161,11 @@ async def process_frame(
             rppg_bpm=session.detector.latest_rppg_bpm,
             rppg_raw_bpm=session.detector.latest_rppg_raw_bpm,
             rppg_signal_ready=session.detector.latest_rppg_ready,
+            rppg_quality_score=getattr(session.detector, "latest_rppg_quality_score", None),
+            rppg_quality_metrics=getattr(session.detector, "latest_rppg_quality_metrics", None),
+            rppg_debug_visual=getattr(session.detector, "latest_rppg_debug_visual", None),
             rppg_debug_reason=session.detector.latest_rppg_debug_reason,
+            rppg_movement_correlation=getattr(session.detector, "latest_rppg_movement_correlation", 0.5),
         )
 
     # Decode frame
@@ -218,8 +226,10 @@ async def process_frame(
                 rppg_bpm=result.get("rppg_bpm"),
                 rppg_raw_bpm=result.get("rppg_raw_bpm"),
                 rppg_signal_ready=bool(result.get("rppg_signal_ready", False)),
-                rppg_debug_reason=result.get("rppg_debug_reason"),
-            )
+                rppg_quality_score=result.get("rppg_quality_score"),
+                rppg_quality_metrics=result.get("rppg_quality_metrics"),
+                rppg_debug_visual=result.get("rppg_debug_visual"),
+                rppg_debug_reason=result.get("rppg_debug_reason"),                rppg_movement_correlation=result.get("rppg_movement_correlation", 0.5),            )
 
     if result["status"] == "completed":
         session.completed = True
@@ -235,6 +245,9 @@ async def process_frame(
             rppg_bpm=result.get("rppg_bpm"),
             rppg_raw_bpm=result.get("rppg_raw_bpm"),
             rppg_signal_ready=bool(result.get("rppg_signal_ready", False)),
+            rppg_quality_score=result.get("rppg_quality_score"),
+            rppg_quality_metrics=result.get("rppg_quality_metrics"),
+            rppg_debug_visual=result.get("rppg_debug_visual"),
             rppg_debug_reason=result.get("rppg_debug_reason"),
         )
 
@@ -254,6 +267,9 @@ async def process_frame(
             rppg_bpm=result.get("rppg_bpm"),
             rppg_raw_bpm=result.get("rppg_raw_bpm"),
             rppg_signal_ready=bool(result.get("rppg_signal_ready", False)),
+            rppg_quality_score=result.get("rppg_quality_score"),
+            rppg_quality_metrics=result.get("rppg_quality_metrics"),
+            rppg_debug_visual=result.get("rppg_debug_visual"),
             rppg_debug_reason=result.get("rppg_debug_reason"),
         )
 
@@ -268,8 +284,10 @@ async def process_frame(
         rppg_bpm=result.get("rppg_bpm"),
         rppg_raw_bpm=result.get("rppg_raw_bpm"),
         rppg_signal_ready=bool(result.get("rppg_signal_ready", False)),
-        rppg_debug_reason=result.get("rppg_debug_reason"),
-    )
+        rppg_quality_score=result.get("rppg_quality_score"),
+        rppg_quality_metrics=result.get("rppg_quality_metrics"),
+        rppg_debug_visual=result.get("rppg_debug_visual"),
+        rppg_debug_reason=result.get("rppg_debug_reason"),        rppg_movement_correlation=result.get("rppg_movement_correlation", 0.5),    )
 
 
 @router.post("/complete/{session_id}")
@@ -292,6 +310,18 @@ async def complete_liveness(
 
     tx_obj_id = ObjectId(transaction_id) if ObjectId.is_valid(transaction_id) else transaction_id
 
+    # Collect rPPG metrics for confidence tier calculation
+    liveness_result_data = {
+        "success": session.success,
+        "challenges_completed": completed_count,
+        "total_challenges": session.total_challenges,
+        "timestamp": datetime.utcnow(),
+        "reason": session.failure_reason,
+        "rppg_quality_score": session.detector.latest_rppg_quality_score,
+        "rppg_movement_correlation": session.detector.latest_rppg_movement_correlation,
+        "rppg_metrics": session.detector.latest_rppg_quality_metrics or {},
+    }
+
     update_result = await db.transactions.update_one(
         {
             "_id": tx_obj_id
@@ -299,13 +329,7 @@ async def complete_liveness(
         {
             "$set": {
                 "liveness_performed": True,
-                "liveness_result": {
-                    "success": session.success,
-                    "challenges_completed": completed_count,
-                    "total_challenges": session.total_challenges,
-                    "timestamp": datetime.utcnow(),
-                    "reason": session.failure_reason,
-                },
+                "liveness_result": liveness_result_data,
                 "status": "approved" if session.success else "rejected",
                 "updated_at": datetime.utcnow()
             }
@@ -346,6 +370,9 @@ async def complete_liveness(
         ),
         "transaction": transaction,
         "settlement": settlement_result,
+        "rppg_quality_score": session.detector.latest_rppg_quality_score,
+        "rppg_movement_correlation": session.detector.latest_rppg_movement_correlation,
+        "rppg_metrics": session.detector.latest_rppg_quality_metrics or {},
     }
 
 

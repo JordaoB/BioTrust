@@ -710,7 +710,9 @@
                 <div class="liveness-grid grid grid-cols-1 md:grid-cols-2 gap-3 h-[52vh] md:h-[58vh] shrink-0">
                     <div class="relative bg-gray-900 rounded-xl overflow-hidden">
                         <video id="webcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                        <canvas id="webcam-debug-overlay" class="absolute inset-0 w-full h-full pointer-events-none hidden"></canvas>
 
+                        <!-- CONFIDENCE PANEL - TOP CENTER -->
                         <div class="absolute top-3 right-3 pointer-events-none">
                             <div class="bg-black/65 backdrop-blur-sm text-white border border-white/20 px-3 py-2 rounded-xl min-w-[200px]">
                                 <p class="text-[10px] uppercase tracking-wide text-gray-300 mb-1">rPPG</p>
@@ -746,6 +748,20 @@
                     </p>
                 </div>
 
+                <div id="rppg-debug-panel" class="hidden bg-slate-900 text-slate-100 rounded-xl p-3 text-xs md:text-sm shrink-0">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="font-semibold uppercase tracking-wide text-cyan-300">rPPG Debug</p>
+                        <p id="rppg-debug-quality" class="font-semibold text-emerald-300">Quality: --%</p>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div class="rounded bg-slate-800 px-2 py-1">SNR: <span id="rppg-debug-snr">--</span></div>
+                        <div class="rounded bg-slate-800 px-2 py-1">Peak: <span id="rppg-debug-peak">--</span></div>
+                        <div class="rounded bg-slate-800 px-2 py-1">Pulse: <span id="rppg-debug-pulse">--</span></div>
+                        <div class="rounded bg-slate-800 px-2 py-1">Reason: <span id="rppg-debug-reason">--</span></div>
+                    </div>
+                    <p class="mt-2 text-[11px] text-slate-400">ROIs: forehead (cyan), left cheek (lime), right cheek (orange)</p>
+                </div>
+
                 <button onclick="cancelLiveness()" class="w-full bg-red-600 text-white font-semibold py-2.5 rounded-xl hover:bg-red-700 transition-all shrink-0">
                     <i class="fas fa-times mr-2"></i>
                     Cancel Verification
@@ -757,7 +773,7 @@
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/js/token-manager.js"></script>
-    <script src="/static/js/webcam.js?v=15"></script>
+    <script src="/static/js/webcam.js?v=16"></script>
     <script src="/static/js/dashboard.js?v=5"></script>
 </body>
 </html>

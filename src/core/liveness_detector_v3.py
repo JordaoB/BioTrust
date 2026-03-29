@@ -177,6 +177,9 @@ class LivenessDetectorV3:
         self.latest_rppg_bpm = None
         self.latest_rppg_raw_bpm = None
         self.latest_rppg_ready = False
+        self.latest_rppg_quality_score = 0.0
+        self.latest_rppg_quality_metrics = {}
+        self.latest_rppg_debug_visual = None
         self.latest_rppg_debug_reason = None
         self.rppg_precheck_completed = False
         self.rppg_bpm_stable_streak = 0
@@ -184,6 +187,7 @@ class LivenessDetectorV3:
         self.WEB_EXPECTED_FPS = 12.0
         self.RPPG_PRECHECK_REQUIRED_STREAK = 4
         self.RPPG_PRECHECK_MAX_WAIT_SECONDS = 12.0
+        self.latest_rppg_movement_correlation = 0.0
 
     # ========== DETECTION METHODS ==========
 
@@ -407,7 +411,11 @@ class LivenessDetectorV3:
         self.latest_rppg_bpm = None
         self.latest_rppg_raw_bpm = None
         self.latest_rppg_ready = False
+        self.latest_rppg_quality_score = 0.0
+        self.latest_rppg_quality_metrics = {}
+        self.latest_rppg_debug_visual = None
         self.latest_rppg_debug_reason = None
+        self.latest_rppg_movement_correlation = 0.0
         self.rppg_precheck_start_frame = self.frame_count_web
         self.rppg_precheck_completed = False
         self.rppg_bpm_stable_streak = 0
@@ -454,7 +462,11 @@ class LivenessDetectorV3:
         self.latest_rppg_bpm = rppg_result.get("bpm")
         self.latest_rppg_raw_bpm = rppg_result.get("raw_bpm")
         self.latest_rppg_ready = bool(rppg_result.get("signal_ready", False))
+        self.latest_rppg_quality_score = float(rppg_result.get("quality_score", 0.0) or 0.0)
+        self.latest_rppg_quality_metrics = rppg_result.get("quality_metrics") or {}
+        self.latest_rppg_debug_visual = rppg_result.get("debug_visual")
         self.latest_rppg_debug_reason = rppg_result.get("debug_reason")
+        self.latest_rppg_movement_correlation = float(rppg_result.get("movement_correlation", 0.5) or 0.5)
 
         def with_rppg(payload):
             # Show BPM when signal is actually ready so users get realtime feedback,
@@ -463,7 +475,11 @@ class LivenessDetectorV3:
             payload["rppg_bpm"] = self.latest_rppg_bpm if self.latest_rppg_ready else None
             payload["rppg_raw_bpm"] = self.latest_rppg_raw_bpm if self.latest_rppg_ready else None
             payload["rppg_signal_ready"] = self.latest_rppg_ready
+            payload["rppg_quality_score"] = self.latest_rppg_quality_score
+            payload["rppg_quality_metrics"] = self.latest_rppg_quality_metrics
+            payload["rppg_debug_visual"] = self.latest_rppg_debug_visual
             payload["rppg_debug_reason"] = self.latest_rppg_debug_reason
+            payload["rppg_movement_correlation"] = self.latest_rppg_movement_correlation
             return payload
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

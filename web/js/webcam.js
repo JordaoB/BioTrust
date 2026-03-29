@@ -35,6 +35,7 @@ let currentTransactionId = null;
 let isStartingLiveness = false;
 let activeSessionId = null;
 let activeRunId = 0;
+const RPPG_DEBUG_MODE = new URLSearchParams(window.location.search).get('rppgDebug') === '1';
 
 const IDENTITY_CHECK_INTERVAL_MS = 2000;
 const MAX_IDENTITY_MISMATCHES = 2;
@@ -612,7 +613,7 @@ async function completeLivenessVerification(sessionId, success) {
 
         const result = await response.json();
         console.log('[Liveness] Final result:', result);
-
+        
         activeSessionId = null;
         stopWebcam();
         hideLivenessModal();
@@ -669,6 +670,17 @@ function cancelLiveness() {
 function showLivenessModal() {
     const modal = document.getElementById('liveness-modal');
     if (modal) modal.classList.remove('hidden');
+
+    const debugPanel = document.getElementById('rppg-debug-panel');
+    const debugOverlay = document.getElementById('webcam-debug-overlay');
+    if (RPPG_DEBUG_MODE) {
+        debugPanel?.classList.remove('hidden');
+        debugOverlay?.classList.remove('hidden');
+    } else {
+        debugPanel?.classList.add('hidden');
+        debugOverlay?.classList.add('hidden');
+    }
+
     hideLivenessAlert();
     setLivenessState('normal', 'Preparing verification...');
 }
@@ -676,7 +688,79 @@ function showLivenessModal() {
 function hideLivenessModal() {
     const modal = document.getElementById('liveness-modal');
     if (modal) modal.classList.add('hidden');
+
+    const debugOverlay = document.getElementById('webcam-debug-overlay');
+    if (debugOverlay) {
+        const ctx = debugOverlay.getContext('2d');
+        if (ctx) {
+            ctx.clearRect(0, 0, debugOverlay.width, debugOverlay.height);
+        }
+    }
+
     hideLivenessAlert();
+}
+
+function drawRppgDebugOverlay(result) {
+    if (!RPPG_DEBUG_MODE) return;
+
+    const overlay = document.getElementById('webcam-debug-overlay');
+    const video = document.getElementById('webcam');
+    const rois = result?.rppg_debug_visual?.rois;
+    if (!overlay || !video) return;
+
+    const width = video.clientWidth || overlay.clientWidth;
+    const height = video.clientHeight || overlay.clientHeight;
+    if (!width || !height) return;
+
+    if (overlay.width !== width) overlay.width = width;
+    if (overlay.height !== height) overlay.height = height;
+
+    const ctx = overlay.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    if (!rois) return;
+
+    const drawPolygon = (points, stroke, fill) => {
+        if (!Array.isArray(points) || points.length < 3) return;
+        ctx.beginPath();
+        ctx.moveTo(points[0][0] * overlay.width, points[0][1] * overlay.height);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i][0] * overlay.width, points[i][1] * overlay.height);
+        }
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+    };
+
+    drawPolygon(rois.forehead, 'rgba(34,211,238,0.95)', 'rgba(34,211,238,0.18)');
+    drawPolygon(rois.left_cheek, 'rgba(132,204,22,0.95)', 'rgba(132,204,22,0.18)');
+    drawPolygon(rois.right_cheek, 'rgba(251,146,60,0.95)', 'rgba(251,146,60,0.18)');
+}
+
+function updateRppgDebugPanel(result) {
+    if (!RPPG_DEBUG_MODE) return;
+
+    const qualityEl = document.getElementById('rppg-debug-quality');
+    const snrEl = document.getElementById('rppg-debug-snr');
+    const peakEl = document.getElementById('rppg-debug-peak');
+    const pulseEl = document.getElementById('rppg-debug-pulse');
+    const reasonEl = document.getElementById('rppg-debug-reason');
+    if (!qualityEl || !snrEl || !peakEl || !pulseEl || !reasonEl) return;
+
+    const quality = Number(result?.rppg_quality_score ?? 0);
+    const metrics = result?.rppg_quality_metrics ?? {};
+    const qualityPct = Math.round(Math.max(0, Math.min(1, quality)) * 100);
+
+    qualityEl.textContent = `Quality: ${qualityPct}%`;
+    qualityEl.className = `font-semibold ${qualityPct >= 70 ? 'text-emerald-300' : qualityPct >= 50 ? 'text-amber-300' : 'text-red-300'}`;
+    snrEl.textContent = Number.isFinite(metrics.snr) ? metrics.snr.toFixed(2) : '--';
+    peakEl.textContent = Number.isFinite(metrics.peak_power_ratio) ? metrics.peak_power_ratio.toFixed(3) : '--';
+    pulseEl.textContent = Number.isFinite(metrics.pulse_rms_ratio) ? metrics.pulse_rms_ratio.toFixed(3) : '--';
+    reasonEl.textContent = result?.rppg_debug_reason || '--';
 }
 
 function setLivenessState(state, text) {
@@ -734,6 +818,9 @@ function updateRppgTelemetry(result) {
     const bpm = result?.rppg_bpm;
 
     bpmEl.textContent = Number.isFinite(bpm) ? bpm.toFixed(1) : 'Measuring...';
+
+    updateRppgDebugPanel(result);
+    drawRppgDebugOverlay(result);
 }
 
 function updateChallengeUI(instruction, feedback) {
