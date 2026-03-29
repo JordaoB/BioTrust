@@ -1,16 +1,19 @@
 """
-BioTrust - rPPG Detector
-========================
+BioTrust - rPPG Detector (CHROM Method)
+========================================
 Remote photoplethysmography (rPPG) detector for real-time heart-rate estimation
-from webcam frames.
+from webcam frames using Chrominance-based (CHROM) method.
 
 Pipeline per frame:
 1) Face detection + fixed skin ROIs (forehead + upper cheeks)
-2) Green-channel mean extraction from each ROI
+2) CHROM signal extraction: 3*R - 2*G (robust to illumination/motion)
 3) Circular temporal buffer (last N seconds)
 4) Butterworth bandpass filtering (0.7-3.0 Hz)
 5) FFT dominant frequency -> BPM
 6) BPM smoothing with moving average over latest estimates
+
+CHROM method combines R, G, B channels to emphasize pulse signal while
+reducing motion artifacts and illumination changes (vs simple GREEN extraction).
 """
 
 from __future__ import annotations
@@ -226,22 +229,24 @@ class RPPG_Detector:
         return fs
 
     def _extract_green_signal(self, frame_bgr: np.ndarray, face_landmarks) -> Optional[float]:
+        """Extract CHROM (chrominance) signal from ROIs."""
         h, w = frame_bgr.shape[:2]
 
         forehead = self._landmarks_to_points(face_landmarks, self._FOREHEAD_IDX, w, h)
         left_cheek = self._landmarks_to_points(face_landmarks, self._LEFT_UPPER_CHEEK_IDX, w, h)
         right_cheek = self._landmarks_to_points(face_landmarks, self._RIGHT_UPPER_CHEEK_IDX, w, h)
 
-        roi_means = []
+        roi_signals = []
         for polygon in (forehead, left_cheek, right_cheek):
-            mean_green = self._mean_green_in_polygon(frame_bgr, polygon)
-            if mean_green is not None:
-                roi_means.append(mean_green)
+            chrom_signal = self._mean_chrom_in_polygon(frame_bgr, polygon)
+            if chrom_signal is not None:
+                roi_signals.append(chrom_signal)
 
-        if not roi_means:
+        if not roi_signals:
             return None
 
-        return float(np.mean(roi_means))
+        # Average CHROM signal across all ROIs
+        return float(np.mean(roi_signals))
 
     @staticmethod
     def _landmarks_to_points(face_landmarks, indices, width: int, height: int) -> np.ndarray:
@@ -254,7 +259,15 @@ class RPPG_Detector:
         return np.array(pts, dtype=np.int32)
 
     @staticmethod
-    def _mean_green_in_polygon(frame_bgr: np.ndarray, polygon: np.ndarray) -> Optional[float]:
+    def _mean_chrom_in_polygon(frame_bgr: np.ndarray, polygon: np.ndarray) -> Optional[float]:
+        """
+        Extract CHROM (Chrominance) signal from a polygon ROI.
+        
+        Formula: CHROM = 3*R - 2*G
+        
+        This combines R and G channels to emphasize cardiovascular pulse signal
+        while reducing motion artifacts and illumination changes.
+        """
         if polygon.shape[0] < 3:
             return None
 
@@ -265,8 +278,16 @@ class RPPG_Detector:
         if pixel_count == 0:
             return None
 
+        # BGR order in OpenCV: B=0, G=1, R=2
+        red_channel = frame_bgr[:, :, 2]
         green_channel = frame_bgr[:, :, 1]
-        return float(cv2.mean(green_channel, mask=mask)[0])
+        
+        # CHROM formula: 3*R - 2*G (normalized)
+        red_mean = float(cv2.mean(red_channel, mask=mask)[0])
+        green_mean = float(cv2.mean(green_channel, mask=mask)[0])
+        
+        chrom_value = (3.0 * red_mean) - (2.0 * green_mean)
+        return float(chrom_value)
 
     def _estimate_bpm_fft(self) -> Optional[float]:
         signal, timestamps = self._ordered_signal_and_timestamps()
