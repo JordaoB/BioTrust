@@ -82,6 +82,7 @@ class StartLivenessRequest(BaseModel):
 
 class ProcessFrameRequest(BaseModel):
     frame_base64: str
+    is_mobile: bool | None = None
 
 
 class ForceFailRequest(BaseModel):
@@ -208,7 +209,7 @@ async def process_frame(
         raise HTTPException(status_code=400, detail=f"Invalid frame data: {str(e)}")
 
     # Process with detector
-    result = session.detector.process_web_frame(frame)
+    result = session.detector.process_web_frame(frame, is_mobile=request.is_mobile)
 
     face_detected = bool(result.get("face_detected", True))
     now = datetime.utcnow()

@@ -445,7 +445,7 @@ class LivenessDetectorV3:
             }
         }
 
-    def process_web_frame(self, frame):
+    def process_web_frame(self, frame, is_mobile=None):
         """
         Process a single frame from browser webcam.
 
@@ -486,6 +486,15 @@ class LivenessDetectorV3:
         results = self.face_mesh.process(rgb)
 
         h, w, _ = frame.shape
+        inferred_mobile = (max(h, w) <= 720 and min(h, w) <= 480)
+        mobile_mode = bool(is_mobile) if is_mobile is not None else inferred_mobile
+
+        challenge_arm_frames = 8 if mobile_mode else self.CHALLENGE_ARM_FRAMES
+        turn_hold_frames = 4 if mobile_mode else self.TURN_HOLD_FRAMES
+        neutral_return_hold_frames = 3 if mobile_mode else self.NEUTRAL_RETURN_HOLD_FRAMES
+        smile_hold_frames = 10 if mobile_mode else 15
+        eyebrow_hold_frames = 10 if mobile_mode else 15
+        movement_threshold = 30 if mobile_mode else 24
 
         if not results.multi_face_landmarks:
             base_progress = (
@@ -529,8 +538,10 @@ class LivenessDetectorV3:
             and self.challenge_armed
             and not self.must_return_neutral
         )
-        center_tolerance_x = self.FACE_CENTER_TOLERANCE_X * (1.75 if is_turn_challenge_active else 1.0)
-        center_tolerance_y = self.FACE_CENTER_TOLERANCE_Y * (1.35 if is_turn_challenge_active else 1.0)
+        base_center_x = self.FACE_CENTER_TOLERANCE_X * (1.2 if mobile_mode else 1.0)
+        base_center_y = self.FACE_CENTER_TOLERANCE_Y * (1.15 if mobile_mode else 1.0)
+        center_tolerance_x = base_center_x * (1.75 if is_turn_challenge_active else 1.0)
+        center_tolerance_y = base_center_y * (1.35 if is_turn_challenge_active else 1.0)
 
         if dx_norm > center_tolerance_x or dy_norm > center_tolerance_y:
             return with_rppg({
@@ -688,15 +699,18 @@ class LivenessDetectorV3:
             })
 
         # Head pose
-        is_frontal, is_left, is_right, _ = self.analyze_head_pose(nose, left_eye_center, right_eye_center)
+        is_frontal, is_left, is_right, symmetry_ratio = self.analyze_head_pose(nose, left_eye_center, right_eye_center)
 
         # FIX #3: face_pitch range widened 0.02–0.13 → 0.01–0.22
         # Rationale: at normal laptop webcam distance, nose sits ~15–18% below
         # eye midpoint relative to frame height — well outside the old 0.13 ceiling.
         nose_eye_ratio = (nose[1] - eye_midpoint[1]) / (h + 1e-6)
-        face_pitch_ok = 0.01 < nose_eye_ratio < 0.22
-        face_frontal = is_frontal and face_pitch_ok
-        movement_ok = movement < 24
+        face_pitch_min = 0.0 if mobile_mode else 0.01
+        face_pitch_max = 0.26 if mobile_mode else 0.22
+        face_pitch_ok = face_pitch_min < nose_eye_ratio < face_pitch_max
+        symmetry_frontal = (0.80 < symmetry_ratio < 1.20) if mobile_mode else is_frontal
+        face_frontal = symmetry_frontal and face_pitch_ok
+        movement_ok = movement < movement_threshold
 
         # Detection metrics
         left_ear = self.calculate_ear(left_eye)
@@ -736,14 +750,14 @@ class LivenessDetectorV3:
                 self.stable_scale_buffer.append(float(current_face_scale))
                 if len(self.stable_scale_buffer) > 45:
                     self.stable_scale_buffer = self.stable_scale_buffer[-45:]
-                if self.frontal_stable_counter >= self.CHALLENGE_ARM_FRAMES:
+                if self.frontal_stable_counter >= challenge_arm_frames:
                     self.challenge_armed = True
                     self.challenge_counter = 0
                     self.blink_frame_counter = 0
                     self.must_return_neutral = False
                     self.turn_hold_counter = 0
                     self.neutral_hold_counter = 0
-                    window = self.stable_scale_buffer[-self.CHALLENGE_ARM_FRAMES:]
+                    window = self.stable_scale_buffer[-challenge_arm_frames:]
                     self.challenge_face_scale_ref = float(np.median(window)) if window else float(current_face_scale)
                     return with_rppg({
                         "status": "in_progress",
@@ -805,8 +819,8 @@ class LivenessDetectorV3:
             feedback = f"{challenge_info['instruction']} ({self.challenge_counter}/{challenge_info['required_count']})"
 
         elif current_challenge == "smile":
-            # Hold smile for 15 frames (~1.5s at 10fps, ~0.5s at 30fps)
-            SMILE_HOLD = 15
+            # Hold smile for fewer frames on mobile to compensate camera jitter.
+            SMILE_HOLD = smile_hold_frames
             if is_smiling and face_frontal:
                 self.challenge_counter += 1
                 if self.challenge_counter >= SMILE_HOLD:
@@ -820,9 +834,10 @@ class LivenessDetectorV3:
             # When the user turns to THEIR left, MediaPipe sees the head turn RIGHT
             # in the raw frame — so we must detect is_right here.
             if not self.must_return_neutral:
-                if is_right:
+                right_turn_detected = is_right or (mobile_mode and symmetry_ratio < 0.88)
+                if right_turn_detected:
                     self.turn_hold_counter += 1
-                    if self.turn_hold_counter >= self.TURN_HOLD_FRAMES:
+                    if self.turn_hold_counter >= turn_hold_frames:
                         self.must_return_neutral = True
                         self.neutral_hold_counter = 0
                         feedback = "Turn detected - return to center"
@@ -831,7 +846,7 @@ class LivenessDetectorV3:
             else:
                 if face_frontal:
                     self.neutral_hold_counter += 1
-                    if self.neutral_hold_counter >= self.NEUTRAL_RETURN_HOLD_FRAMES:
+                    if self.neutral_hold_counter >= neutral_return_hold_frames:
                         challenge_satisfied = True
                 else:
                     self.neutral_hold_counter = max(0, self.neutral_hold_counter - 1)
@@ -840,9 +855,10 @@ class LivenessDetectorV3:
         elif current_challenge == "turn_right":
             # FIX: same mirror logic — user turning RIGHT appears as LEFT in raw frame.
             if not self.must_return_neutral:
-                if is_left:
+                left_turn_detected = is_left or (mobile_mode and symmetry_ratio > 1.10)
+                if left_turn_detected:
                     self.turn_hold_counter += 1
-                    if self.turn_hold_counter >= self.TURN_HOLD_FRAMES:
+                    if self.turn_hold_counter >= turn_hold_frames:
                         self.must_return_neutral = True
                         self.neutral_hold_counter = 0
                         feedback = "Turn detected - return to center"
@@ -851,14 +867,14 @@ class LivenessDetectorV3:
             else:
                 if face_frontal:
                     self.neutral_hold_counter += 1
-                    if self.neutral_hold_counter >= self.NEUTRAL_RETURN_HOLD_FRAMES:
+                    if self.neutral_hold_counter >= neutral_return_hold_frames:
                         challenge_satisfied = True
                 else:
                     self.neutral_hold_counter = max(0, self.neutral_hold_counter - 1)
                     feedback = "Return to center..."
 
         elif current_challenge == "eyebrows_up":
-            EYEBROW_HOLD = 15
+            EYEBROW_HOLD = eyebrow_hold_frames
             if are_eyebrows_raised and face_frontal:
                 self.challenge_counter += 1
                 if self.challenge_counter >= EYEBROW_HOLD:

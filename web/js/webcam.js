@@ -562,7 +562,10 @@ function startFrameStream(sessionId, runId, userId) {
             const response = await fetch(`/api/liveness-stream/frame/${sessionId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ frame_base64: frameBase64 })
+                body: JSON.stringify({
+                    frame_base64: frameBase64,
+                    is_mobile: isMobile,
+                })
             });
 
             if (!response.ok) {
